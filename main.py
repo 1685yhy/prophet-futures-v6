@@ -6,6 +6,8 @@ Usage:
   python main.py --mode paper_trading [--symbol lh]
   python main.py --mode backtest --date 2025-06-01 [--backtest-days 180] [--symbols rb,lh,sc]
   python main.py --mode build_memory [--symbols rb,i,lh,jd,sc] [--start 20230101]
+  python main.py --mode daily_update --symbol lh
+  python main.py --mode daily_update --symbol lh --position SHORT,11910,12115,11295,2026-06-09
 """
 
 import argparse
@@ -28,9 +30,14 @@ def parse_args():
     )
     parser.add_argument(
         "--mode",
-        choices=["backtest", "paper_trading", "build_memory"],
+        choices=["backtest", "paper_trading", "build_memory", "daily_update"],
         default="paper_trading",
         help="Operating mode",
+    )
+    parser.add_argument(
+        "--position", default=None,
+        help="当前持仓，格式: 方向,入场价,止损价,目标价,入场日期  "
+             "例: SHORT,11910,12115,11295,2026-06-09",
     )
     parser.add_argument("--date",   default=None, help="End date for backtest (YYYY-MM-DD)")
     parser.add_argument("--symbol", default=None, help="Override symbol (paper_trading)")
@@ -152,6 +159,133 @@ def run_build_memory(symbols, start_date):
     return {"written": count, "stats": stats}
 
 
+def run_daily_update(symbol: str = "lh", position_str: str = None):
+    """
+    每日更新模式：输出次日方向预测 + 持仓管理建议。
+
+    Args:
+        symbol:       品种代码（如 lh、jd、bu、ma）
+        position_str: 持仓字符串，格式 "方向,入场价,止损价,目标价,入场日期"
+                      例: "SHORT,11910,12115,11295,2026-06-09"
+    """
+    logger = logging.getLogger(__name__)
+    from datetime import date as date_cls
+    from tools.market_data import get_kline, get_realtime_quote
+    from tools.indicators import calc_indicators
+    from tools.next_day_predictor import predict_next_day
+    from tools.position_manager import get_position_advice, format_position_report
+    from tools.cycle_detector import get_lh_signal_conditions, get_generic_signal_conditions
+    import pandas as pd
+
+    print()
+    print(f"{'='*55}")
+    print(f"  先知期货认知交易系统 — 每日更新")
+    print(f"  {date_cls.today()}  品种: {symbol.upper()}")
+    print(f"{'='*55}")
+    print()
+
+    # ── 拉取数据 ────────────────────────────────────────────────────────────
+    kline = get_kline(symbol, "daily", 120)
+    df = pd.DataFrame({
+        "open":  kline.opens,  "high":   kline.highs,
+        "low":   kline.lows,   "close":  kline.closes,
+        "volume":kline.volumes,
+    })
+    if kline.open_interests:
+        df["oi"] = kline.open_interests
+
+    ind  = calc_indicators(df)
+    atr  = ind["atr14"]
+    cur  = ind["current_close"]
+
+    try:
+        q    = get_realtime_quote(symbol)
+        cur  = q.last_price
+    except Exception:
+        pass
+
+    prev_close = ind["prev_close"]
+
+    # ── 次日方向预测 ────────────────────────────────────────────────────────
+    pred = predict_next_day(df, ind)
+
+    # ── 趋势信号 ────────────────────────────────────────────────────────────
+    if symbol.lower() in ("lh",):
+        trend_sig = get_lh_signal_conditions(df, ind)
+    else:
+        trend_sig = get_generic_signal_conditions(symbol, df, ind)
+
+    # ── 持仓解析 ────────────────────────────────────────────────────────────
+    position = None
+    if position_str:
+        try:
+            parts = [p.strip() for p in position_str.split(",")]
+            position = {
+                "direction":  parts[0].upper(),
+                "entry":      float(parts[1]),
+                "stop":       float(parts[2]),
+                "target":     float(parts[3]),
+                "entry_date": parts[4] if len(parts) > 4 else str(date_cls.today()),
+            }
+        except Exception as e:
+            logger.warning("持仓解析失败（格式: 方向,入场,止损,目标,日期）: %s", e)
+
+    # ── 输出 ─────────────────────────────────────────────────────────────────
+    if position:
+        advice = get_position_advice(position, cur, pred, ind, atr, prev_close)
+        report = format_position_report(symbol.upper(), position, cur, pred, advice, {
+            "cycle":  trend_sig.get("conditions", {}).get("cycle", "N/A"),
+            "signal": trend_sig.get("signal", "WAIT"),
+        })
+        print(report)
+    else:
+        # 无持仓：只显示信号扫描
+        dir_cn = {"UP": "偏多↑", "DOWN": "偏空↓", "NEUTRAL": "中性→"}.get(pred["direction"], "?")
+        print(f"【今日行情（无持仓）】")
+        print(f"  {symbol.upper()} 当前价: {cur:.0f}  ATR: {atr:.1f}")
+        print()
+        print(f"【次日方向预测】")
+        print(f"  方向: {dir_cn}  置信度: {pred['confidence']:.0%}  得分: {pred['score']}/10")
+        for sig in pred.get("key_signals", [])[:4]:
+            print(f"    · {sig}")
+        print(f"  关键支撑: {pred['support']:.0f}  关键压力: {pred['resistance']:.0f}")
+        print(f"  {pred['action_advice']}")
+        print()
+
+    # ── 趋势信号状态 ────────────────────────────────────────────────────────
+    print(f"【趋势信号扫描】")
+    conds = trend_sig.get("conditions", {})
+    sig   = trend_sig.get("signal", "WAIT")
+    cycle = conds.get("cycle", "N/A")
+
+    if sig != "WAIT":
+        print(f"  ✅ {sig} 信号触发！置信度: {trend_sig.get('confidence', 0):.0%}")
+        print(f"  建议: 入场方向={sig}，止损={trend_sig.get('stop_atr_mult',1.5)}×ATR，"
+              f"目标={trend_sig.get('target_atr_mult',2.5)}×ATR，"
+              f"持仓约{trend_sig.get('hold_days',5)}日")
+    else:
+        print(f"  ⏸ 当前无趋势入场信号（大周期: {cycle}）")
+        missing = []
+        if not conds.get("ma_bear") and not conds.get("ma_bull"):
+            missing.append("均线排列不明确")
+        if not conds.get("macd_neg") and not conds.get("macd_pos"):
+            missing.append("MACD方向未确认")
+        if conds.get("oi_trend") not in ("REDUCING","ACCUMULATING"):
+            missing.append("OI趋势FLAT")
+        if not conds.get("no_noise"):
+            missing.append("换仓噪音期")
+        if missing:
+            print(f"  未满足条件: {' | '.join(missing)}")
+    print()
+
+    # ── 风险提示 ────────────────────────────────────────────────────────────
+    risk = pred.get("risk_note", "")
+    if risk and risk != "当前无特别风险提示":
+        print(f"【⚠ 风险提示】")
+        print(f"  {risk}")
+        print()
+
+
 def main():
     args   = parse_args()
     setup_logging(level=args.log_level, log_to_file=not args.no_log_file)
@@ -191,6 +325,11 @@ def main():
 
     elif args.mode == "build_memory":
         result = run_build_memory(symbols=symbols, start_date=args.start)
+        sys.exit(0)
+
+    elif args.mode == "daily_update":
+        symbol = args.symbol or "lh"
+        run_daily_update(symbol=symbol, position_str=args.position)
         sys.exit(0)
 
 

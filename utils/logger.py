@@ -1,31 +1,36 @@
+"""Logging configuration for Prophet Futures system."""
+
 import logging
-import os
+import sys
+from pathlib import Path
 from datetime import datetime
 
 
+def setup_logging(level: str = "INFO", log_to_file: bool = True) -> None:
+    """Configure structured logging for the entire system."""
+    numeric_level = getattr(logging, level.upper(), logging.INFO)
+
+    handlers = [logging.StreamHandler(sys.stdout)]
+
+    if log_to_file:
+        log_dir = Path("logs")
+        log_dir.mkdir(exist_ok=True)
+        log_file = log_dir / f"prophet_{datetime.now().strftime('%Y%m%d_%H%M%S')}.log"
+        handlers.append(logging.FileHandler(log_file, encoding="utf-8"))
+
+    logging.basicConfig(
+        level=numeric_level,
+        format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
+        datefmt="%Y-%m-%d %H:%M:%S",
+        handlers=handlers,
+    )
+
+    for noisy in ["httpx", "httpcore", "urllib3", "anthropic", "openai", "langchain"]:
+        logging.getLogger(noisy).setLevel(logging.WARNING)
+
+    logging.info("Prophet Futures logging initialized (level=%s)", level)
+
+
+# 兼容旧版调用
 def setup_logger(name: str = "prophet_futures") -> logging.Logger:
-    logger = logging.getLogger(name)
-    logger.setLevel(logging.INFO)
-    
-    if not logger.handlers:
-        formatter = logging.Formatter(
-            "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
-        )
-        
-        console_handler = logging.StreamHandler()
-        console_handler.setFormatter(formatter)
-        logger.addHandler(console_handler)
-        
-        log_dir = "logs"
-        os.makedirs(log_dir, exist_ok=True)
-        
-        file_handler = logging.FileHandler(
-            os.path.join(log_dir, f"{datetime.now().strftime('%Y%m%d')}.log")
-        )
-        file_handler.setFormatter(formatter)
-        logger.addHandler(file_handler)
-    
-    return logger
-
-
-logger = setup_logger()
+    return logging.getLogger(name)
