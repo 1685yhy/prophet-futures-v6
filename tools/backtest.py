@@ -22,7 +22,8 @@ logger = logging.getLogger(__name__)
 
 SLIPPAGE_BPS  = 2       # 滑点 bps
 COMMISSION_RT = 0.0001  # 单边手续费率
-MAX_HOLD_DAYS = 8       # 最大持仓天数（超过强制平仓）
+MAX_HOLD_DAYS  = 20     # 最大持仓天数（追踪止损模式下延长到20日）
+TRAIL_ATR_MULT = 2.0    # 追踪止损：收盘价 ± N×ATR（做空用+，做多用-）
 
 # 合约规格：每手对应的实物数量（吨/桶/克）
 # 价格单位：元/吨（或元/桶、元/克）
@@ -150,7 +151,16 @@ def _backtest_symbol(df: pd.DataFrame, symbol: str, capital: float) -> List[Dict
             hit_target = (d == "LONG"  and high_ >= pos["target_full"]) or \
                          (d == "SHORT" and low_  <= pos["target_full"])
 
-            # 分批止盈：到达1:1时减半
+            # ── 追踪止损更新（每日收盘后，止损只能朝有利方向移动）──
+            if not hit_stop and not hit_target:
+                if d == "LONG":
+                    new_trail = close - TRAIL_ATR_MULT * atr
+                    pos["stop"] = max(pos["stop"], new_trail)   # 多单止损只能上移
+                else:
+                    new_trail = close + TRAIL_ATR_MULT * atr
+                    pos["stop"] = min(pos["stop"], new_trail)   # 空单止损只能下移
+
+            # 分批止盈：到达1:1时减半（保留，但不是主要退出机制）
             if not pos["half_done"]:
                 hit_half = (d == "LONG"  and high_ >= pos["target_half"]) or \
                            (d == "SHORT" and low_  <= pos["target_half"])
@@ -160,7 +170,7 @@ def _backtest_symbol(df: pd.DataFrame, symbol: str, capital: float) -> List[Dict
                     # 半仓PnL = 价差 × 合约规格 × 手数/2
                     half_pnl   = (half_price - entry) * lot_size * (pos["qty"] / 2) * (1 if d == "LONG" else -1)
                     half_pnl  -= abs(half_price * lot_size * pos["qty"] / 2 * COMMISSION_RT)
-                    pos["stop"] = entry
+                    pos["stop"] = entry   # 减半后止损移至成本保本
 
             if hit_stop or hit_target or force_exit:
                 remain_qty = pos["qty"] / 2 if pos["half_done"] else pos["qty"]

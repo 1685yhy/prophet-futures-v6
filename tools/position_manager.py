@@ -115,61 +115,66 @@ def get_position_advice(
             action      = "FULL_EXIT"
             exit_signal = f"达到最大持仓天数{MAX_HOLD_DAYS}天"
 
+    # ── 追踪止损计算（每日必做，不依赖次日方向）────────────────────────────
+    # 规则：止损只能朝有利方向移动，不能反向
+    # 多单：止损 = max(原止损, 收盘 - 2×ATR)
+    # 空单：止损 = min(原止损, 收盘 + 2×ATR)
+    TRAIL_MULT = 2.0
+    if d == "LONG":
+        trail_stop = round(current_price - TRAIL_MULT * atr, 2)
+        suggested_stop = max(stop, trail_stop)   # 只能上移
+    else:
+        trail_stop = round(current_price + TRAIL_MULT * atr, 2)
+        suggested_stop = min(stop, trail_stop)   # 只能下移
+
+    stop_moved = (suggested_stop != stop)
+
     # ── 核心逻辑：结合次日方向 ───────────────────────────────────────────────
     if action != "FULL_EXIT":
         if d == "LONG":
-            if next_dir == "DOWN":
-                if next_conf > 0.60:
-                    action      = "PARTIAL_EXIT"
-                    urgency     = "HIGH"
-                    exit_signal = f"次日偏空信号强（置信{next_conf:.0%}），减半仓锁利"
-                    hold_more   = pnl_pts > 0  # 有盈利才减仓
-                    reasons.append(exit_signal)
-                elif next_conf > 0.30:
-                    action   = "TIGHTEN_STOP"
-                    new_stop = round(max(stop, current_price - 1.0 * atr), 2)
-                    urgency  = "MEDIUM"
-                    reasons.append(f"次日偏空（置信{next_conf:.0%}），止损上移至{new_stop}")
-            elif next_dir == "UP":
-                if pnl_pts > atr and next_conf > 0.40:
-                    action  = "ADD"
-                    urgency = "LOW"
-                    reasons.append(f"次日偏多（置信{next_conf:.0%}）且浮盈{pnl_pts:.0f}点>{atr:.0f}ATR，可加仓")
-                else:
-                    reasons.append(f"次日偏多，继续持有，追踪止损至{round(current_price - 1.5*atr,2)}")
-                    new_stop = round(max(stop, current_price - 1.5 * atr), 2)
-                    action   = "TIGHTEN_STOP" if new_stop > stop else "HOLD"
-            else:  # NEUTRAL
-                reasons.append(f"次日信号中性，继续持有")
-                new_stop = round(max(stop, current_price - 2.0 * atr), 2)
-                action   = "TIGHTEN_STOP" if new_stop > stop else "HOLD"
+            if next_dir == "DOWN" and next_conf > 0.60:
+                action      = "PARTIAL_EXIT"
+                urgency     = "HIGH"
+                exit_signal = f"次日偏空信号强（置信{next_conf:.0%}），减半仓锁利"
+                hold_more   = pnl_pts > 0
+                reasons.append(exit_signal)
+            elif next_dir == "DOWN" and next_conf > 0.30:
+                action   = "TIGHTEN_STOP"
+                new_stop = suggested_stop
+                urgency  = "MEDIUM"
+                reasons.append(f"次日偏空（置信{next_conf:.0%}），追踪止损更新至{new_stop}")
+            elif next_dir == "UP" and pnl_pts > atr and next_conf > 0.40:
+                action  = "ADD"
+                urgency = "LOW"
+                new_stop = suggested_stop
+                reasons.append(f"次日偏多且浮盈{pnl_pts:.0f}点>{atr:.0f}ATR，可加仓")
+            else:
+                # 无论何种信号，每日更新追踪止损
+                new_stop = suggested_stop
+                action   = "TIGHTEN_STOP" if stop_moved else "HOLD"
+                reasons.append(f"追踪止损{'更新' if stop_moved else '维持'}至{suggested_stop:.0f}（收盘{current_price:.0f}-{TRAIL_MULT}×ATR{atr:.0f}）")
 
         else:  # SHORT
-            if next_dir == "UP":
-                if next_conf > 0.60:
-                    action      = "PARTIAL_EXIT"
-                    urgency     = "HIGH"
-                    exit_signal = f"次日偏多信号强（置信{next_conf:.0%}），减半仓锁利"
-                    hold_more   = pnl_pts > 0
-                    reasons.append(exit_signal)
-                elif next_conf > 0.30:
-                    action   = "TIGHTEN_STOP"
-                    new_stop = round(min(stop, current_price + 1.0 * atr), 2)
-                    urgency  = "MEDIUM"
-                    reasons.append(f"次日偏多（置信{next_conf:.0%}），止损下移至{new_stop}")
-            elif next_dir == "DOWN":
-                if pnl_pts > atr and next_conf > 0.40:
-                    action  = "ADD"
-                    urgency = "LOW"
-                    reasons.append(f"次日偏空（置信{next_conf:.0%}）且浮盈{pnl_pts:.0f}点>{atr:.0f}ATR，可加仓")
-                else:
-                    reasons.append(f"次日偏空，继续持有，追踪止损至{round(current_price + 1.5*atr,2)}")
-                    new_stop = round(min(stop, current_price + 1.5 * atr), 2)
-                    action   = "TIGHTEN_STOP" if new_stop < stop else "HOLD"
+            if next_dir == "UP" and next_conf > 0.60:
+                action      = "PARTIAL_EXIT"
+                urgency     = "HIGH"
+                exit_signal = f"次日偏多信号强（置信{next_conf:.0%}），减半仓锁利"
+                hold_more   = pnl_pts > 0
+                reasons.append(exit_signal)
+            elif next_dir == "UP" and next_conf > 0.30:
+                action   = "TIGHTEN_STOP"
+                new_stop = suggested_stop
+                urgency  = "MEDIUM"
+                reasons.append(f"次日偏多（置信{next_conf:.0%}），追踪止损更新至{new_stop}")
+            elif next_dir == "DOWN" and pnl_pts > atr and next_conf > 0.40:
+                action  = "ADD"
+                urgency = "LOW"
+                new_stop = suggested_stop
+                reasons.append(f"次日偏空且浮盈{pnl_pts:.0f}点>{atr:.0f}ATR，可加仓")
             else:
-                reasons.append("次日信号中性，继续持有")
-                new_stop = round(min(stop, current_price + 2.0 * atr), 2)
-                action   = "TIGHTEN_STOP" if new_stop < stop else "HOLD"
+                new_stop = suggested_stop
+                action   = "TIGHTEN_STOP" if stop_moved else "HOLD"
+                reasons.append(f"追踪止损{'更新' if stop_moved else '维持'}至{suggested_stop:.0f}（收盘{current_price:.0f}+{TRAIL_MULT}×ATR{atr:.0f}）")
 
     # 已亏损超过目标的50%，提示
     if pnl_pts < -atr * 0.8:
