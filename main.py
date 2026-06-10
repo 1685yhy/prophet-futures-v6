@@ -36,8 +36,8 @@ def parse_args():
     )
     parser.add_argument(
         "--position", default=None,
-        help="当前持仓，格式: 方向,入场价,止损价,目标价,入场日期  "
-             "例: SHORT,11910,12115,11295,2026-06-09",
+        help="当前持仓，格式: 方向,入场价,止损价,目标价,入场日期[,手数]  "
+             "例: SHORT,11910,12115,11295,2026-06-09,13",
     )
     parser.add_argument("--date",   default=None, help="End date for backtest (YYYY-MM-DD)")
     parser.add_argument("--symbol", default=None, help="Override symbol (paper_trading)")
@@ -176,6 +176,7 @@ def run_daily_update(symbol: str = "lh", position_str: str = None):
     from tools.position_manager import get_position_advice, format_position_report
     from tools.cycle_detector import get_lh_signal_conditions, get_generic_signal_conditions
     from tools.hog_fundamentals import get_hog_fundamentals, format_fundamentals_report
+    from tools.backtest import get_lot_size
     import pandas as pd
 
     print()
@@ -235,6 +236,7 @@ def run_daily_update(symbol: str = "lh", position_str: str = None):
                 "stop":       float(parts[2]),
                 "target":     float(parts[3]),
                 "entry_date": parts[4] if len(parts) > 4 else str(date_cls.today()),
+                "qty":        float(parts[5]) if len(parts) > 5 else 1.0,
             }
         except Exception as e:
             logger.warning("持仓解析失败（格式: 方向,入场,止损,目标,日期）: %s", e)
@@ -245,8 +247,11 @@ def run_daily_update(symbol: str = "lh", position_str: str = None):
         print(format_fundamentals_report(fundamentals))
         print()
 
+    lot_size = get_lot_size(symbol)
+
     if position:
-        advice = get_position_advice(position, cur, pred, ind, atr, prev_close)
+        advice = get_position_advice(position, cur, pred, ind, atr, prev_close,
+                                     lot_size=lot_size)
         report = format_position_report(symbol.upper(), position, cur, pred, advice, {
             "cycle":  trend_sig.get("conditions", {}).get("cycle", "N/A"),
             "signal": trend_sig.get("signal", "WAIT"),

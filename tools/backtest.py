@@ -24,6 +24,29 @@ SLIPPAGE_BPS  = 2       # 滑点 bps
 COMMISSION_RT = 0.0001  # 单边手续费率
 MAX_HOLD_DAYS = 8       # 最大持仓天数（超过强制平仓）
 
+# 合约规格：每手对应的实物数量（吨/桶/克）
+# 价格单位：元/吨（或元/桶、元/克）
+# PnL = 价差(元/吨) × 合约规格(吨/手) × 手数
+CONTRACT_LOT_SIZE: Dict[str, float] = {
+    "lh": 16.0,    # 生猪：16吨/手
+    "jd": 5.0,     # 鸡蛋：5吨/手（价格元/500克，需注意单位）
+    "bu": 10.0,    # 沥青：10吨/手
+    "fu": 10.0,    # 燃料油：10吨/手
+    "ma": 10.0,    # 甲醇：10吨/手
+    "rb": 10.0,    # 螺纹钢：10吨/手
+    "i":  100.0,   # 铁矿石：100吨/手
+    "sc": 1000.0,  # 原油：1000桶/手
+    "cu": 5.0,     # 铜：5吨/手
+    "au": 1000.0,  # 黄金：1000克/手
+    "ag": 15000.0, # 白银：15000克/手
+    "zn": 5.0,     # 锌：5吨/手
+    "al": 5.0,     # 铝：5吨/手
+}
+
+def get_lot_size(symbol: str) -> float:
+    """获取品种合约乘数（吨或桶或克/手）。"""
+    return CONTRACT_LOT_SIZE.get(symbol.lower().rstrip("0123456789"), 10.0)
+
 
 # ── 数据获取 ────────────────────────────────────────────────────────────────
 
@@ -95,10 +118,11 @@ def run_backtest(
 # ── 单品种回测 ───────────────────────────────────────────────────────────────
 
 def _backtest_symbol(df: pd.DataFrame, symbol: str, capital: float) -> List[Dict]:
-    trades  = []
-    pos     = None  # {direction, entry, stop, target_half, target_full, entry_date, entry_idx, qty, half_done}
-    WINDOW  = 60
-    is_lh   = symbol.lower() == "lh"
+    trades   = []
+    pos      = None
+    WINDOW   = 60
+    is_lh    = symbol.lower() == "lh"
+    lot_size = get_lot_size(symbol)   # 合约乘数（吨/桶/手）
 
     for i in range(WINDOW, len(df) - 1):
         today    = df.iloc[i]
@@ -133,9 +157,9 @@ def _backtest_symbol(df: pd.DataFrame, symbol: str, capital: float) -> List[Dict
                 if hit_half:
                     pos["half_done"] = True
                     half_price = pos["target_half"]
-                    half_pnl   = (half_price - entry) * (pos["qty"] / 2) * (1 if d == "LONG" else -1)
-                    half_pnl  -= abs(half_price * pos["qty"] / 2 * COMMISSION_RT)
-                    # 半仓平后将止损移至成本
+                    # 半仓PnL = 价差 × 合约规格 × 手数/2
+                    half_pnl   = (half_price - entry) * lot_size * (pos["qty"] / 2) * (1 if d == "LONG" else -1)
+                    half_pnl  -= abs(half_price * lot_size * pos["qty"] / 2 * COMMISSION_RT)
                     pos["stop"] = entry
 
             if hit_stop or hit_target or force_exit:
@@ -150,8 +174,9 @@ def _backtest_symbol(df: pd.DataFrame, symbol: str, capital: float) -> List[Dict
                     exit_price = close * (1 - SLIPPAGE_BPS/10000 if d == "LONG" else 1 + SLIPPAGE_BPS/10000)
                     reason     = "GAP" if gap_pct > 0.025 else "MAX_HOLD"
 
-                pnl = (exit_price - entry) * remain_qty * (1 if d == "LONG" else -1)
-                pnl -= abs(exit_price * remain_qty * COMMISSION_RT)
+                # PnL = 价差(元/吨) × 合约规格(吨/手) × 手数
+                pnl = (exit_price - entry) * lot_size * remain_qty * (1 if d == "LONG" else -1)
+                pnl -= abs(exit_price * lot_size * remain_qty * COMMISSION_RT)
 
                 trades.append({
                     "symbol":     symbol,
@@ -189,7 +214,9 @@ def _backtest_symbol(df: pd.DataFrame, symbol: str, capital: float) -> List[Dict
                 target_half = entry + stop_dist if d == "LONG" else entry - stop_dist   # 1:1 减半
                 target_full = entry + target_dist if d == "LONG" else entry - target_dist  # 2.5:1 满仓
 
-                qty = round(max(1.0, min(20.0, capital * 0.02 / stop_dist)), 1)
+                # 手数 = 最大风险金额 / (止损点数 × 合约规格)
+                max_risk_per_trade = capital * 0.02
+                qty = round(max(1.0, min(20.0, max_risk_per_trade / (stop_dist * lot_size))), 1)
 
                 pos = {
                     "direction":   d,

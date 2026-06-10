@@ -31,6 +31,7 @@ def get_position_advice(
     ind: Dict[str, Any],
     atr: float,
     prev_close: Optional[float] = None,
+    lot_size: float = 1.0,   # 合约规格（吨/手），默认1表示不换算
 ) -> Dict[str, Any]:
     """
     根据当前持仓和次日预测给出管理建议。
@@ -74,12 +75,14 @@ def get_position_advice(
     except Exception:
         hold_days  = 0
 
-    # 浮盈
+    # 浮盈：点数 × 合约规格 × 手数
+    qty = float(position.get("qty", 1))
     if d == "LONG":
         pnl_pts = current_price - entry
     else:
         pnl_pts = entry - current_price
-    pnl_pct = pnl_pts / (entry + 1e-8) * 100
+    pnl_cash = pnl_pts * lot_size * qty   # 实际金额（元）
+    pnl_pct  = pnl_pts / (entry + 1e-8) * 100
 
     next_dir  = next_day_pred.get("direction", "NEUTRAL")
     next_conf = next_day_pred.get("confidence", 0.0)
@@ -100,7 +103,8 @@ def get_position_advice(
         exit_signal = f"跳空>{2.5:.0f}%，强制平仓规避极端风险"
         hold_more   = False
         return _build_result(action, new_stop, exit_signal, urgency,
-                             pnl_pts, pnl_pct, hold_more, hold_days, reasons)
+                             pnl_pts, pnl_pct, hold_more, hold_days, reasons,
+                             pnl_cash=round(pnl_cash, 0))
 
     # ── 超过最大持仓天数 ────────────────────────────────────────────────────
     if hold_days >= MAX_HOLD_DAYS - 1:
@@ -175,17 +179,20 @@ def get_position_advice(
     reasoning = "；".join(reasons) if reasons else "持仓正常，无特别提示"
 
     return _build_result(action, new_stop, exit_signal, urgency,
-                         pnl_pts, pnl_pct, hold_more, hold_days, [reasoning])
+                         pnl_pts, pnl_pct, hold_more, hold_days, [reasoning],
+                         pnl_cash=round(pnl_cash, 0))
 
 
 def _build_result(action, new_stop, exit_signal, urgency,
-                  pnl_pts, pnl_pct, hold_more, hold_days, reasons):
+                  pnl_pts, pnl_pct, hold_more, hold_days, reasons,
+                  pnl_cash=None):
     return {
         "action":      action,
         "new_stop":    new_stop,
         "reasoning":   "；".join(r for r in reasons if r),
         "urgency":     urgency,
-        "pnl_now":     round(pnl_pts, 2),
+        "pnl_now":     round(pnl_pts, 2),     # 点数（元/吨）
+        "pnl_cash":    pnl_cash,               # 实际金额（元），需传入lot_size*qty才有意义
         "pnl_pct":     round(pnl_pct, 3),
         "hold_more":   hold_more,
         "exit_signal": exit_signal,
@@ -208,13 +215,19 @@ def format_position_report(
     stop  = float(position.get("stop", 0))
     tgt   = float(position.get("target", 0))
 
-    pnl   = advice["pnl_now"]
-    pct   = advice["pnl_pct"]
-    pnl_str = f"+{pnl:.0f}点(+{pct:.2f}%)" if pnl >= 0 else f"{pnl:.0f}点({pct:.2f}%)"
+    pnl_pts = advice["pnl_now"]
+    pct     = advice["pnl_pct"]
+    qty     = float(position.get("qty", 1))
+    # 实际金额：优先用advice里算好的，否则用点数近似
+    pnl_cash= advice.get("pnl_cash")
+    if pnl_cash is None:
+        pnl_cash = pnl_pts * qty  # 没有合约规格时降级
+    cash_str = f"{pnl_cash:+,.0f}元"
+    pnl_str  = f"{pnl_pts:+.0f}点/{cash_str}({pct:+.2f}%)"
 
     lines.append(f"【持仓状态】")
-    lines.append(f"  {symbol} {'空单' if d=='SHORT' else '多单'} @ {entry:.0f}  "
-                 f"当前 {current_price:.0f}  浮{'盈' if pnl>=0 else '亏'} {pnl_str}")
+    lines.append(f"  {symbol} {'空单' if d=='SHORT' else '多单'} {qty:.0f}手 @ {entry:.0f}  "
+                 f"当前 {current_price:.0f}  浮{'盈' if pnl_pts>=0 else '亏'} {pnl_str}")
     lines.append(f"  持仓 {advice['hold_days']} 天 | 止损 {stop:.0f} | 目标 {tgt:.0f}")
     lines.append("")
 
