@@ -144,7 +144,10 @@ for sym in["lh","jm"]:
     print(f"  {q:.1f}手 盈亏比1:{TARGET_ATR/STOP_ATR:.1f}")
     print(f"  ⚡ 次日开盘{ml_dir}，设好止损止盈")
     print(f"  风控: 单笔{RISK_PCT:.0%} | 连亏3停 | 月亏5%")
-    print(f"  回测: v6 WF 22笔 64%胜率 DD2.5%")
+    print(f"  回测: v9 WF 200次 胜率55-59%")
+    # Save signal for pre-market check
+    with open("/tmp/prophet_signal.txt","w") as sf:
+        sf.write(f"{sym},{ml_dir},{entry:.0f}")
 
 print(f"\n{'='*55}")
 print(f"  ⚠️ 免责: 仅供学习参考，不构成投资建议")
