@@ -1,0 +1,47 @@
+{
+  "LH": {
+    "name": "生猪",
+    "best_wr": 52.4,
+    "best_params": {
+      "n_estimators": 200,
+      "max_depth": 4,
+      "learning_rate": 0.05
+    },
+    "best_trades": 468,
+    "data_rows": 1317
+  },
+  "JM": {
+    "name": "焦煤",
+    "best_wr": 55.3,
+    "best_params": {
+      "n_estimators": 100,
+      "max_depth": 5,
+      "learning_rate": 0.03
+    },
+    "best_trades": 477,
+    "data_rows": 1325
+  },
+  "RM": {
+    "name": "菜粕",
+    "best_wr": 56.1,
+    "best_params": {
+      "n_est": 100,
+      "depth": 5,
+      "lr": 0.03,
+      "win": 120,
+      "rev": true
+    },
+    "best_trades": 212,
+    "strategy": "mean_reversion",
+    "label": "5d_0.8%",
+    "data_rows": 1325
+  },
+  "summary": {
+    "LH_wr": 52.4,
+    "JM_wr": 55.3,
+    "RM_wr": 56.1,
+    "avg_wr": 54.6,
+    "total_trades": 1157,
+    "date": "2026-06-19"
+  }
+}
