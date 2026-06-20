@@ -1,0 +1,30 @@
+{
+  "optimization_history": {
+    "v14": {"LH": 52.4, "JM": 55.3, "RM": 56.1, "note": "基础参数优化, 无真实成本"},
+    "v16": {"LH": 49.0, "JM": 49.6, "RM": 47.7, "note": "真实成本(手续费+滑点), 固定1x仓位"},
+    "v17": {
+      "fixed": {"LH": "5.6%/yr", "JM": "9.3%/yr", "RM": "4.2%/yr"},
+      "volatility": {"LH": "24.4%/yr", "JM": "63.4%/yr", "RM": "33.9%/yr"},
+      "note": "波动率仓位管理大幅提升年化收益"
+    },
+    "v18": {
+      "LH": {"best_mode": "single XGBoost", "ann_ret": "11.5%/yr", "wr": 48.9},
+      "JM": {"best_mode": "dynamic switching", "ann_ret": "11.9%/yr", "wr": 51.7},
+      "RM": {"best_mode": "single XGBoost (mean-rev)", "ann_ret": "33.9%/yr", "wr": 46.6},
+      "note": "集成模型对噪声数据无益。JM动态切换有用。CatBoost太重不适合2GB服务器。"
+    }
+  },
+  "key_findings": [
+    "真实成本后胜率降至47-52%, 但依然盈利",
+    "波动率仓位管理是最大收益提升手段(4-8x)",
+    "更多老数据(2016-2019)降低信号质量",
+    "集成模型(LGBM+CatBoost)对期货噪声数据无增益",
+    "JM适合动态趋势/回归切换, LH适合纯趋势, RM适合均值回归",
+    "2GB服务器内存不够跑CatBoost, 需要至少4GB"
+  ],
+  "production_config": {
+    "LH": {"model": "XGBoost", "params": "n=200 d=4 lr=0.05 w=60", "strategy": "TREND", "cost": "0.06%", "sizing": "volatility"},
+    "JM": {"model": "XGBoost", "params": "n=100 d=5 lr=0.03 w=60", "strategy": "DYNAMIC", "cost": "0.11%", "sizing": "volatility"},
+    "RM": {"model": "XGBoost", "params": "n=100 d=5 lr=0.03 w=120", "strategy": "MEAN-REV", "cost": "0.11%", "sizing": "volatility"}
+  }
+}
