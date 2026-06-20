@@ -13,10 +13,10 @@ from sklearn.model_selection import TimeSeriesSplit
 SYMBOLS = {
     'LH': {'code': 'LH0', 'name': '生猪', 'cost': 0.0006, 'rev': False,
            'has_night': False,
-           'params': {'n_est': 200, 'depth': 4, 'lr': 0.05, 'win': 60}},
+           'params': {'n_est': 200, 'depth': 5, 'lr': 0.05, 'win': 60}},
     'JM': {'code': 'JM0', 'name': '焦煤', 'cost': 0.0011, 'rev': False,
            'has_night': True,
-           'params': {'n_est': 100, 'depth': 5, 'lr': 0.03, 'win': 60}},
+           'params': {'n_est': 100, 'depth': 4, 'lr': 0.03, 'win': 60}},
     'RM': {'code': 'RM0', 'name': '菜粕', 'cost': 0.0011, 'rev': True,
            'has_night': True,
            'params': {'n_est': 100, 'depth': 5, 'lr': 0.03, 'win': 120}},
