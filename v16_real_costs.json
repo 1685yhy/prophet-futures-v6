@@ -1,0 +1,17 @@
+{
+  "v16_real_costs": {
+    "date": "2026-06-20",
+    "cost_model": "commission + 1-tick slippage each way",
+    "costs": {
+      "LH": {"total": "0.06%", "breakdown": "commission 0.04% + slippage 0.02%"},
+      "JM": {"total": "0.11%", "breakdown": "commission 0.03% + slippage 0.08%"},
+      "RM": {"total": "0.11%", "breakdown": "commission 0.02% + slippage 0.09%"}
+    },
+    "results": {
+      "LH": {"trades": 416, "wr": 49.0, "net_pnl_pct": 11.8, "pf": 1.92, "strategy": "TREND"},
+      "JM": {"trades": 528, "wr": 49.6, "net_pnl_pct": 28.4, "pf": 1.97, "strategy": "TREND"},
+      "RM": {"trades": 264, "wr": 47.7, "net_pnl_pct": 12.5, "pf": 1.83, "strategy": "MEAN-REV"}
+    },
+    "note": "All strategies still profitable after real costs. JM strongest (28.4% net, best PF 1.97). RM borderline at 47.7% WR."
+  }
+}
