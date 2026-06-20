@@ -226,8 +226,9 @@ def backtest(df, models, cfg):
             else: pos = 0
             if pos == 0: continue
             
-            # Dynamic stop (ATR-based, capped at 3x cost for realism)
-            stop_pct = max(cost, min(3*cost, atr_pct * 0.5))
+            # Dynamic ATR stop (1x ATR for stop, 3x for target)
+            atr_stop = atr_pct  # 1x daily ATR as stop
+            stop_pct = max(cost, min(0.02, atr_stop))  # floor=cost, cap=2%
             target_pct = RR * stop_pct
             
             # Exit simulation
