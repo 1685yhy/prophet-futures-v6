@@ -1,0 +1,92 @@
+{
+  "LH_fixed": {
+    "trades": 416,
+    "wr": 49.5,
+    "cum_ret": 12.1,
+    "ann_ret": 5.6,
+    "dd": 80.0,
+    "pf": 1.96,
+    "avg_pos": 1.0,
+    "mode": "fixed"
+  },
+  "LH_kelly": {
+    "trades": 416,
+    "wr": 49.5,
+    "cum_ret": 12.1,
+    "ann_ret": 5.6,
+    "dd": 80.0,
+    "pf": 1.96,
+    "avg_pos": 1.0,
+    "mode": "kelly"
+  },
+  "LH_volatility": {
+    "trades": 416,
+    "wr": 49.5,
+    "cum_ret": 57.9,
+    "ann_ret": 24.4,
+    "dd": 97.7,
+    "pf": 2.01,
+    "avg_pos": 4.6,
+    "mode": "volatility"
+  },
+  "JM_fixed": {
+    "trades": 528,
+    "wr": 48.5,
+    "cum_ret": 26.4,
+    "ann_ret": 9.3,
+    "dd": 100.0,
+    "pf": 1.88,
+    "avg_pos": 1.0,
+    "mode": "fixed"
+  },
+  "JM_kelly": {
+    "trades": 528,
+    "wr": 48.5,
+    "cum_ret": 26.4,
+    "ann_ret": 9.3,
+    "dd": 100.0,
+    "pf": 1.88,
+    "avg_pos": 1.0,
+    "mode": "kelly"
+  },
+  "JM_volatility": {
+    "trades": 528,
+    "wr": 48.5,
+    "cum_ret": 264.0,
+    "ann_ret": 63.4,
+    "dd": 100.0,
+    "pf": 1.88,
+    "avg_pos": 10.0,
+    "mode": "volatility"
+  },
+  "RM_fixed": {
+    "trades": 264,
+    "wr": 46.6,
+    "cum_ret": 11.5,
+    "ann_ret": 4.2,
+    "dd": 155.6,
+    "pf": 1.74,
+    "avg_pos": 1.0,
+    "mode": "fixed"
+  },
+  "RM_kelly": {
+    "trades": 264,
+    "wr": 46.6,
+    "cum_ret": 11.5,
+    "ann_ret": 4.2,
+    "dd": 155.6,
+    "pf": 1.74,
+    "avg_pos": 1.0,
+    "mode": "kelly"
+  },
+  "RM_volatility": {
+    "trades": 264,
+    "wr": 46.6,
+    "cum_ret": 115.5,
+    "ann_ret": 33.9,
+    "dd": 155.6,
+    "pf": 1.74,
+    "avg_pos": 10.0,
+    "mode": "volatility"
+  }
+}
