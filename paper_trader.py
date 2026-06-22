@@ -12,9 +12,9 @@ import pickle
 # ===== CONFIG =====
 SYMBOLS = {
     'lh2609': {'code': 'LH0', 'name': 'LH', 'cost': 0.0006, 'multiplier': 16,
-               'struct_n': 26, 'rr': 4, 'max_pos': 6, 'reverse': False},
+               'stop_type': 'atr', 'stop_mult': 1.5, 'rr': 4, 'max_pos': 6, 'reverse': False},
     'jm2609': {'code': 'JM0', 'name': 'JM', 'cost': 0.0011, 'multiplier': 60,
-               'struct_n': 24, 'rr': 3, 'max_pos': 4, 'reverse': False},
+               'stop_type': 'struct', 'struct_n': 20, 'rr': 3.5, 'max_pos': 4, 'reverse': False},
 }
 
 CAPITAL = 300000
@@ -175,14 +175,29 @@ def main():
             price = float(df.iloc[-1]['close'])
             pos_size = calc_position_size(sym_key, df)
 
-            # Struct stop
-            struct_n = cfg['struct_n']
-            if signal_dir == 'LONG':
-                lows = [float(df.iloc[k]['low']) for k in range(max(0, len(df)-struct_n), len(df))]
-                stop_price = min(lows)
+            # Calculate stop (ATR or struct)
+            stop_type = cfg.get('stop_type', 'struct')
+            if stop_type == 'atr':
+                # ATR-based stop
+                atr_vals = []
+                for i in range(max(0, len(df)-20), len(df)):
+                    atr_vals.append(abs(float(df.iloc[i]['high']) - float(df.iloc[i]['low'])))
+                atr = np.mean(atr_vals) if atr_vals else price * 0.01
+                stop_mult = cfg.get('stop_mult', 1.5)
+                stop_dist = atr * stop_mult
+                if signal_dir == 'LONG':
+                    stop_price = price - stop_dist
+                else:
+                    stop_price = price + stop_dist
             else:
-                highs = [float(df.iloc[k]['high']) for k in range(max(0, len(df)-struct_n), len(df))]
-                stop_price = max(highs)
+                # Struct stop
+                struct_n = cfg.get('struct_n', 20)
+                if signal_dir == 'LONG':
+                    lows = [float(df.iloc[k]['low']) for k in range(max(0, len(df)-struct_n), len(df))]
+                    stop_price = min(lows)
+                else:
+                    highs = [float(df.iloc[k]['high']) for k in range(max(0, len(df)-struct_n), len(df))]
+                    stop_price = max(highs)
 
             rr_val = cfg['rr']
             margin = pos_size * price * cfg['multiplier'] * 0.15
@@ -219,15 +234,30 @@ def main():
             print(f"    ✅ 开仓成功 STOP={stop_price:.0f} TP={tp_price:.0f}")
 
         # Check stops and take-profits for existing positions
+        # Use real-time spot prices, not daily OHLC (which is stale intraday)
         for sym_key in list(state['positions'].keys()):
             pos = state['positions'][sym_key]
             cfg = SYMBOLS[sym_key]
-            df = fetch_history(cfg['code'], 50)
-            if df is None or len(df) == 0: continue
             
-            current_price = float(df.iloc[-1]['close'])
-            current_high = float(df.iloc[-1]['high']) if len(df) > 0 else current_price
-            current_low = float(df.iloc[-1]['low']) if len(df) > 0 else current_price
+            # Get real-time price
+            try:
+                spot = ak.futures_zh_spot(symbol=sym_key.upper(), market='DCE')
+                if spot is None or len(spot) == 0:
+                    spot = ak.futures_spot_em(symbol=sym_key.upper())
+                if spot is not None and len(spot) > 0:
+                    row = spot.iloc[0]
+                    current_price = float(row['最新价'] if '最新价' in row else row['price'])
+                    current_high = float(row.get('最高价', current_price))
+                    current_low = float(row.get('最低价', current_price))
+                else:
+                    continue
+            except:
+                # Fallback: use daily data
+                df = fetch_history(cfg['code'], 50)
+                if df is None or len(df) == 0: continue
+                current_price = float(df.iloc[-1]['close'])
+                current_high = float(df.iloc[-1]['high'])
+                current_low = float(df.iloc[-1]['low'])
 
             entry = pos['entry']
             stop = pos['stop']

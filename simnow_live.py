@@ -20,9 +20,11 @@ from vnpy_ctp import CtpGateway
 # ===== CONFIG =====
 SYMBOLS = {
     'lh2609': {'vt': 'DCE.lh2609', 'name': 'LH', 'cost': 0.0006, 'multiplier': 16,
-               'params': (200, 5, 0.05, 60), 'rev': False, 'struct_n': 26, 'rr': 4},
+               'params': (200, 5, 0.05, 60), 'rev': False,
+               'stop_type': 'atr', 'stop_mult': 1.5, 'rr': 4},
     'jm2609': {'vt': 'DCE.jm2609', 'name': 'JM', 'cost': 0.0011, 'multiplier': 60,
-               'params': (100, 4, 0.03, 60), 'rev': False, 'struct_n': 24, 'rr': 3},
+               'params': (200, 5, 0.03, 60), 'rev': False,
+               'stop_type': 'struct', 'struct_n': 20, 'rr': 3.5},
 }
 
 CAPITAL = 300000
@@ -183,7 +185,7 @@ def main():
         "经纪商代码": "9999", "交易服务器": "182.254.243.31:30001",
         "行情服务器": "182.254.243.31:30011",
         "产品名称": "simnow_client_test", "授权编码": "0000000000000000",
-        "产品信息": ""
+        "产品信息": "prophet_futures_v24"
     }
     
     # Try all 3 groups if first one fails
@@ -294,16 +296,30 @@ def main():
             if pos_size == 0:
                 continue
             
-            # Struct stop
-            struct_n = signal['struct_n']
-            if signal['signal'] == 'LONG':
-                struct_lows = [float(df.iloc[k]['low']) for k in range(max(0, len(df)-struct_n), len(df))]
-                stop_price = min(struct_lows)
-                stop_dir = Direction.SHORT
+            # Calculate stop (ATR or struct)
+            price = signal['price']
+            stop_type = signal['cfg'].get('stop_type', 'struct')
+            if stop_type == 'atr':
+                atr_vals = [abs(float(df.iloc[k]['high']) - float(df.iloc[k]['low']))
+                            for k in range(max(0, len(df)-20), len(df))]
+                atr = np.mean(atr_vals) if atr_vals else price * 0.01
+                stop_dist = atr * signal['cfg'].get('stop_mult', 1.5)
+                if signal['signal'] == 'LONG':
+                    stop_price = price - stop_dist
+                    stop_dir = Direction.SHORT
+                else:
+                    stop_price = price + stop_dist
+                    stop_dir = Direction.LONG
             else:
-                struct_highs = [float(df.iloc[k]['high']) for k in range(max(0, len(df)-struct_n), len(df))]
-                stop_price = max(struct_highs)
-                stop_dir = Direction.LONG
+                struct_n = signal['cfg'].get('struct_n', 20)
+                if signal['signal'] == 'LONG':
+                    struct_lows = [float(df.iloc[k]['low']) for k in range(max(0, len(df)-struct_n), len(df))]
+                    stop_price = min(struct_lows)
+                    stop_dir = Direction.SHORT
+                else:
+                    struct_highs = [float(df.iloc[k]['high']) for k in range(max(0, len(df)-struct_n), len(df))]
+                    stop_price = max(struct_highs)
+                    stop_dir = Direction.LONG
             
             stop_price = round(stop_price, 1)
             
