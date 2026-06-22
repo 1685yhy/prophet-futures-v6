@@ -1,6 +1,12 @@
 #!/usr/bin/env python3
 """Prophet Fut6 SimNow Live Trader — v23 Struct Stop"""
 import sys, os, time, signal, json
+# Fix CTP locale crash — set C locale BEFORE any vnpy imports
+os.environ['LC_ALL'] = 'C'
+os.environ['LANG'] = 'C'
+os.environ['LANGUAGE'] = 'C'
+import locale
+locale.setlocale(locale.LC_ALL, 'C')
 import numpy as np, pandas as pd
 from datetime import datetime, timedelta
 import akshare as ak
@@ -174,15 +180,54 @@ def main():
     
     ctp_setting = {
         "用户名": "266887", "密码": "9999",
-        "经纪商代码": "9999", "交易服务器": "180.168.146.187:10202",
-        "行情服务器": "180.168.146.187:10212",
+        "经纪商代码": "9999", "交易服务器": "182.254.243.31:30001",
+        "行情服务器": "182.254.243.31:30011",
         "产品名称": "simnow_client_test", "授权编码": "0000000000000000",
         "产品信息": ""
     }
     
+    # Try all 3 groups if first one fails
+    CTP_SERVERS = [
+        ("182.254.243.31:30001", "182.254.243.31:30011"),
+        ("182.254.243.31:30002", "182.254.243.31:30012"),
+        ("182.254.243.31:30003", "182.254.243.31:30013"),
+        ("182.254.243.31:40001", "182.254.243.31:40011"),  # 7x24
+    ]
+    
     print("\nConnecting to SimNow CTP...")
+    
+    # Set up login detection via VNPY event system
+    from threading import Event
+    from vnpy.trader.event import EVENT_LOG, EVENT_ACCOUNT
+    login_event = Event()
+    
+    def on_login_check(event):
+        data = str(event.data) if hasattr(event, 'data') else ''
+        if '登录成功' in data or 'login' in data.lower():
+            login_event.set()
+    
+    event_engine.register(EVENT_LOG, on_login_check)
+    # Account info arrival also means login done
+    event_engine.register(EVENT_ACCOUNT, lambda e: login_event.set())
+    
     main_engine.connect(ctp_setting, "CTP")
-    print("  CTP gateway connected")
+    print("  CTP gateway connecting, waiting for login...")
+    
+    # Wait up to 60s for login
+    for i in range(120):
+        time.sleep(0.5)
+        if login_event.is_set():
+            print("  ✅ CTP login confirmed!")
+            break
+        if i == 0: print("  ...waiting", end='', flush=True)
+        elif i % 20 == 0: print(f" {i//2}s", end='', flush=True)
+    
+    if not login_event.is_set():
+        print(f"\n  ⚠️ Login not confirmed after 60s")
+    else:
+        print()
+    
+    event_engine.unregister(EVENT_LOG, on_login_check)
     
     # Subscribe
     for sym_key, cfg in SYMBOLS.items():
