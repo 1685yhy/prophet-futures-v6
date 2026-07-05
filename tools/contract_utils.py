@@ -119,22 +119,39 @@ def get_multi_contract_oi(
 
         # 最新一日各合约OI
         latest = all_df[all_df["date"] == last_date].set_index("contract")
-        total_oi = int(latest["oi"].sum())
+
+        def _safe_int(val) -> int:
+            """安全转为 int，兼容 Series/DataFrame/np.array 返回值。"""
+            import numpy as np
+            try:
+                if hasattr(val, "item"):
+                    val = val.item()
+            except (ValueError, TypeError):
+                pass
+            if hasattr(val, "sum"):
+                val = val.sum()
+            if isinstance(val, (np.floating, float)):
+                return int(round(float(val)))
+            if isinstance(val, (np.ndarray, list)):
+                val = sum(val)
+            return int(val)
+
+        total_oi = _safe_int(latest["oi"].sum())
 
         # 主力合约 = OI最大
         dominant = latest["oi"].idxmax() if len(latest) > 0 else ""
-        dominant_oi = int(latest.loc[dominant, "oi"]) if dominant else 0
+        dominant_oi = _safe_int(latest.loc[dominant, "oi"]) if dominant else 0
 
         # 全品种昨日OI
-        prev_1d = all_df[all_df["date"] == prev_dates[-2]].set_index("contract")["oi"].sum() if len(prev_dates) >= 2 else total_oi
-        prev_3d = all_df[all_df["date"] == prev_dates[-4]].set_index("contract")["oi"].sum() if len(prev_dates) >= 4 else total_oi
+        prev_1d = _safe_int(all_df[all_df["date"] == prev_dates[-2]].set_index("contract")["oi"].sum()) if len(prev_dates) >= 2 else total_oi
+        prev_3d = _safe_int(all_df[all_df["date"] == prev_dates[-4]].set_index("contract")["oi"].sum()) if len(prev_dates) >= 4 else total_oi
 
-        total_chg_1d = int(total_oi - prev_1d)
-        total_chg_3d = int(total_oi - prev_3d)
+        total_chg_1d = _safe_int(total_oi - prev_1d)
+        total_chg_3d = _safe_int(total_oi - prev_3d)
 
         # 主力合约昨日OI变化
         dominant_prev_series = all_df[(all_df["date"] == prev_dates[-2]) & (all_df["contract"] == dominant)]["oi"]
-        dominant_prev = int(dominant_prev_series.sum()) if (dominant and len(prev_dates) >= 2 and len(dominant_prev_series) > 0) else dominant_oi
+        dominant_prev = _safe_int(dominant_prev_series.sum()) if (dominant and len(prev_dates) >= 2 and len(dominant_prev_series) > 0) else dominant_oi
         dominant_chg = dominant_oi - dominant_prev
 
         # 换仓检测：主力减少 + 次主力增加（跷跷板结构）
