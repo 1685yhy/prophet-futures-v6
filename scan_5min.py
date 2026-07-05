@@ -11,6 +11,7 @@ from realtime_data import (
 
 MODEL_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'models')
 STATE_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'paper_state.json')
+PRED_HISTORY_FILE = os.path.join(MODEL_DIR, 'pred_history.json')
 
 SYMBOLS = {
     'lh2609': {'stop_type': 'atr', 'stop_mult': 1.5, 'rr': 4, 'max_pos': 6,
@@ -133,6 +134,20 @@ def main():
                         direction = 'LONG' if prob > 0.5 else 'SHORT'
                         confidence = prob if prob > 0.5 else (1 - prob)
 
+                        # ── 前一日比对 ──
+                        delta_str = ""
+                        try:
+                            if os.path.exists(PRED_HISTORY_FILE):
+                                with open(PRED_HISTORY_FILE) as f:
+                                    hist = json.load(f)
+                                entries = hist.get(sym_key, [])
+                                if entries and entries[-1].get('date') != ref_date:
+                                    prev_p = entries[-1].get('prob', 0)
+                                    d = prob - prev_p
+                                    arrow = '↑' if d > 0 else '↓' if d < 0 else '→'
+                                    delta_str = f"（{arrow}{abs(d):.1%}）"
+                        except: pass
+
                         if confidence > 0.58:
                             stop_mult = cfg['stop_mult']
                             sd = atr * stop_mult
@@ -156,9 +171,9 @@ def main():
                                 dir_cn = '做多' if direction == 'LONG' else '做空'
                                 mg = vol * price * cfg['multiplier'] * 0.15
                                 signal_text = (
-                                    f"{emoji} **{info['name']} {dir_cn}信号**\n"
-                                    f"🧠 模型{'偏多' if direction=='LONG' else '偏空'} {confidence:.1%}（基于 {ref_date} 日线）\n"
-                                    f"实时价 **{price:.0f}** | 止损 **{sp:.0f}** | 止盈 **{tp:.0f}**\n"
+                                    f"{emoji} **{info['name']} {dir_cn}信号**\\n"
+                                    f"🧠 模型{'偏多' if direction=='LONG' else '偏空'} {confidence:.1%}{delta_str}（基于 {ref_date} 日线）\\n"
+                                    f"实时价 **{price:.0f}** | 止损 **{sp:.0f}** | 止盈 **{tp:.0f}**\\n"
                                     f"{vol}手 ¥{mg/10000:.1f}万 | RR=1:{cfg['rr']:.0f}"
                                 )
                     except: pass

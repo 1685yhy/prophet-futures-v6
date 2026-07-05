@@ -1,0 +1,16 @@
+{
+  "cash": 123528.0,
+  "positions": {
+    "lh2609": [
+      {
+        "dir": "LONG",
+        "entry": 12255.0,
+        "vol": 6,
+        "_entry_time": "2026-07-03T09:00:00.992188",
+        "_trail": 11924.625
+      }
+    ]
+  },
+  "trades": [],
+  "equity_history": []
+}

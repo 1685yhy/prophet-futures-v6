@@ -1,0 +1,48 @@
+{
+  "cash": 272403.47599999997,
+  "positions": {
+    "lh2609": [
+      {
+        "dir": "SHORT",
+        "entry": 12295.0,
+        "vol": 1,
+        "_entry_time": "2026-07-01T13:30:10.256798",
+        "_trail": 12646.0,
+        "bar_count": 0
+      }
+    ]
+  },
+  "trades": [
+    {
+      "sym": "lh2609",
+      "dir": "SHORT",
+      "entry": 12295.0,
+      "exit": 12270.0,
+      "vol": 3,
+      "pnl": 1146.8856,
+      "type": "REDUCE",
+      "time": "2026-07-02T10:06:51.992314"
+    },
+    {
+      "sym": "lh2609",
+      "dir": "SHORT",
+      "entry": 12295.0,
+      "exit": 12270.0,
+      "vol": 1,
+      "pnl": 382.2952,
+      "type": "REDUCE",
+      "time": "2026-07-02T10:30:28.170965"
+    },
+    {
+      "sym": "lh2609",
+      "dir": "SHORT",
+      "entry": 12295.0,
+      "exit": 12270.0,
+      "vol": 1,
+      "pnl": 382.2952,
+      "type": "REDUCE",
+      "time": "2026-07-02T10:35:38.088076"
+    }
+  ],
+  "equity_history": []
+}

@@ -140,16 +140,15 @@ def main():
     print('  LH: ATR×1.5 加仓>2ATR&65% 反手<35% | JM: ATR×2.0 加仓>2.5ATR&65% 反手<30%')
     print('=' * 60)
 
-    # Load models — 优先校准版
+    # Load models — V28 用旧模型
     models = {}
     for sym_key in SYMBOLS:
         loaded = False
-        for suffix in ['_xgb_calibrated.pkl', '_xgb.pkl']:
+        for suffix in ['_xgb.pkl']:  # V28 旧模型，不校准
             mp = os.path.join(MODEL_DIR, sym_key+suffix)
             if os.path.exists(mp):
                 with open(mp, 'rb') as f: models[sym_key] = pickle.load(f)
-                tag = 'calibrated' if 'calibrated' in suffix else 'raw'
-                print('  %s: loaded (%s)' % (sym_key, tag))
+                print('  %s: loaded (%s)' % (sym_key, os.path.basename(mp)))
                 loaded = True
                 break
         if not loaded:

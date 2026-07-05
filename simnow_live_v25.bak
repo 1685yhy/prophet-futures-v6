@@ -1,0 +1,332 @@
+#!/usr/bin/env python3
+"""Prophet Futures — SimNow Live Trader v26
+动态止盈止损: 模型驱动退出 + 移动止损 + 保本
+CTP实盘连接SimNow, 用XGBoost模型生成信号
+"""
+import sys, os, time, signal, json
+import ctypes
+_libc = ctypes.CDLL('libc.so.6')
+_libc.setlocale(0, b'C')
+os.environ['LC_ALL'] = 'C'
+os.environ['LANG'] = 'C'
+os.environ['LANGUAGE'] = 'C'
+import locale
+locale.setlocale(locale.LC_ALL, 'C')
+import numpy as np, pandas as pd
+from datetime import datetime, timedelta
+import akshare as ak
+import xgboost as xgb
+from vnpy.event import EventEngine
+from vnpy.trader.engine import MainEngine
+from vnpy.trader.setting import SETTINGS
+from vnpy.trader.constant import Direction, Offset, OrderType
+from vnpy_ctp import CtpGateway
+
+# ===== CONFIG (V26) =====
+SYMBOLS = {
+    'lh2609': {
+        'vt': 'DCE.lh2609', 'name': 'LH', 'cost': 0.0006, 'multiplier': 16,
+        'max_pos': 3,
+        # V26 exit params
+        'hard_atr': 0.8, 'trail_atr': 2.0, 'be_atr': 1.0,
+        'trail_dist': 1.5, 'model_low': 0.35, 'model_high': 0.65,
+        'confirm_bars': 2, 'min_hold': 3,
+    },
+    'jm2609': {
+        'vt': 'DCE.jm2609', 'name': 'JM', 'cost': 0.0011, 'multiplier': 60,
+        'max_pos': 4,
+        # V26 exit params
+        'hard_atr': 1.8, 'trail_atr': 3.0, 'be_atr': 2.0,
+        'trail_dist': 2.5, 'model_low': 0.30, 'model_high': 0.70,
+        'confirm_bars': 3, 'min_hold': 5,
+    },
+}
+
+CAPITAL = 300000
+VOL_LOOKBACK = 20
+MAX_LEVERAGE = 3.0
+MIN_LEVERAGE = 0.5
+
+MODEL_DIR = os.path.join(os.path.dirname(__file__), 'models')
+running = True
+
+def signal_handler(sig, frame):
+    global running; running = False
+signal.signal(signal.SIGINT, signal_handler)
+signal.signal(signal.SIGTERM, signal_handler)
+
+# ===== DATA =====
+def fetch_history(symbol_code, days=1200):
+    end = datetime.now(); start = end - timedelta(days=days)
+    try:
+        df = ak.futures_main_sina(symbol=symbol_code, start_date=start.strftime('%Y%m%d'),
+                                   end_date=end.strftime('%Y%m%d'))
+        df.columns = ['date','open','high','low','close','volume','oi','settle']
+        for col in ['open','high','low','close','volume','oi']:
+            df[col] = pd.to_numeric(df[col], errors='coerce')
+        return df.dropna(subset=['close']).reset_index(drop=True)
+    except Exception as e:
+        print(f"Fetch error {symbol_code}: {e}"); return None
+
+def build_features(df, idx, window=60):
+    if idx < window + 5: return None
+    w = df.iloc[idx-window:idx+1]
+    c = w['close'].values; o = w['open'].values
+    h = w['high'].values; l = w['low'].values
+    v = w['volume'].values; oi = w['oi'].values
+    f = []
+    if idx >= 1: f.append((o[-1]-c[-2])/c[-2]); f.append(abs(f[-1]))
+    else: f.extend([0, 0])
+    for lag in [1,3,5,10,20]: f.append((c[-1]-c[-lag-1])/c[-lag-1] if len(c) > lag else 0)
+    for p in [5,10,20,60]: ma = np.mean(c[-min(p,len(c)):]); f.append((c[-1]-ma)/ma)
+    f.append(np.std(c[-20:])/np.mean(c[-20:])); f.append((h[-1]-l[-1])/c[-1])
+    vma = np.mean(v[-20:]) if np.mean(v[-20:]) > 0 else 1; f.append(v[-1]/vma)
+    f.append(oi[-1]/np.mean(oi[-20:]) if len(oi) >= 20 and np.mean(oi[-20:]) > 0 else 1)
+    ema12 = c[-1]; ema26 = c[-1]
+    for j in range(len(c)-2, -1, -1): ema12 = (2/13)*c[j] + (11/13)*ema12; ema26 = (2/27)*c[j] + (25/27)*ema26
+    f.append((ema12-ema26)/c[-1])
+    dd_ = np.diff(c[-15:]); g = dd_[dd_>0].sum() if len(dd_[dd_>0]) > 0 else 0
+    lo = abs(dd_[dd_<0].sum()) if len(dd_[dd_<0]) > 0 else 1e-10
+    f.append(100 - 100/(1+g/lo) if lo > 0 else 50)
+    bb = np.std(c[-20:]); ma20 = np.mean(c[-20:]); f.append((c[-1]-ma20)/(2*bb+1e-10))
+    f.append(c[-1]/1000.0)
+    return np.array(f, dtype=np.float32)
+
+def calc_atr(df, idx, period=20):
+    if idx < period: return None
+    vals = [abs(float(df.iloc[i]['high']) - float(df.iloc[i]['low']))
+            for i in range(idx-period+1, idx+1)]
+    return np.mean(vals)
+
+def calc_position_size(sym_key, df):
+    cfg = SYMBOLS[sym_key]
+    atr_vals = [abs(df.iloc[i]['high'] - df.iloc[i]['low'])
+                for i in range(max(0, len(df)-VOL_LOOKBACK), len(df))]
+    if not atr_vals: return 1
+    atr = np.mean(atr_vals); price = df.iloc[-1]['close']; atr_pct = atr / price
+    if atr_pct < 0.01: leverage = MAX_LEVERAGE
+    elif atr_pct < 0.02: leverage = 2.0
+    elif atr_pct < 0.03: leverage = 1.5
+    elif atr_pct < 0.05: leverage = MIN_LEVERAGE
+    else: leverage = 0
+    base = cfg['max_pos']
+    return max(1, int(leverage * base)) if leverage > 0 else 0
+
+# ===== V26 SIGNAL GENERATION =====
+def generate_signals(models):
+    signals = {}
+    for sym_key, cfg in SYMBOLS.items():
+        main_code = cfg['name'] + '0'
+        df = fetch_history(main_code, 1200)
+        if df is None or len(df) < 100: continue
+        
+        feats = build_features(df, len(df)-1, 60)
+        if feats is None: continue
+        
+        model_key = sym_key
+        if model_key not in models: continue
+        
+        try:
+            prob = float(models[model_key].predict_proba(feats.reshape(1, -1))[0][1])
+        except: continue
+        
+        signal_dir = 'LONG' if prob > 0.5 else 'SHORT'
+        confidence = prob if prob > 0.5 else (1 - prob)
+        price = float(df.iloc[-1]['close'])
+        pos_size = calc_position_size(sym_key, df)
+        
+        # V26 entry stop: hard_atr
+        atr = calc_atr(df, len(df)-1, 20)
+        if atr is None: continue
+        stop_dist = atr * cfg['hard_atr']
+        
+        if signal_dir == 'LONG':
+            entry_stop = price - stop_dist
+            # Reference TP based on trail_atr
+            display_tp = price + stop_dist * (cfg['trail_atr'] + cfg['trail_dist'])
+        else:
+            entry_stop = price + stop_dist
+            display_tp = price - stop_dist * (cfg['trail_atr'] + cfg['trail_dist'])
+        
+        signals[sym_key] = {
+            'signal': signal_dir, 'confidence': confidence,
+            'price': price, 'pos_size': pos_size,
+            'entry_stop': round(entry_stop, 1),
+            'display_tp': round(display_tp, 1),
+            'df': df, 'cfg': cfg, 'atr': atr,
+        }
+    return signals
+
+# ===== MAIN =====
+def main():
+    global running
+    
+    print("="*60)
+    print("  Prophet v26 — SimNow Live Trader")
+    print("  Dynamic stop/take-profit | CTP connected")
+    print("="*60)
+    
+    # Load models
+    models = {}
+    print("Loading models...")
+    import pickle
+    for sym_key in SYMBOLS:
+        mp = os.path.join(MODEL_DIR, f'{sym_key}_xgb.pkl')
+        if os.path.exists(mp):
+            with open(mp, 'rb') as f: models[sym_key] = pickle.load(f)
+            print(f"  {sym_key}: loaded")
+        else:
+            print(f"  {sym_key}: no model at {mp}")
+    
+    # VNPY setup
+    event_engine = EventEngine()
+    main_engine = MainEngine(event_engine)
+    main_engine.add_gateway(CtpGateway)
+    
+    ctp_setting = {
+        "用户名": "266887", "密码": "asdfghjkl123!!",
+        "经纪商代码": "9999", "交易服务器": "182.254.243.31:30001",
+        "行情服务器": "182.254.243.31:30011",
+        "产品名称": "simnow_client_test", "授权编码": "0000000000000000",
+        "产品信息": "prophet_futures_v26"
+    }
+    
+    print("\nConnecting to SimNow CTP...")
+    from threading import Event
+    from vnpy.trader.event import EVENT_LOG, EVENT_ACCOUNT
+    login_event = Event()
+    
+    def on_login(event):
+        data = str(event.data) if hasattr(event, 'data') else ''
+        if '登录成功' in data: login_event.set()
+    event_engine.register(EVENT_LOG, on_login)
+    event_engine.register(EVENT_ACCOUNT, lambda e: login_event.set())
+    
+    main_engine.connect(ctp_setting, "CTP")
+    print("  CTP connecting, waiting for login...")
+    
+    for i in range(120):
+        time.sleep(0.5)
+        if login_event.is_set():
+            print("  ✅ CTP login confirmed!")
+            break
+        if i % 20 == 0: print(f"  ...{i//2}s", flush=True)
+    
+    if not login_event.is_set():
+        print("  ⚠️ Login not confirmed after 60s, continuing anyway...")
+    
+    event_engine.unregister(EVENT_LOG, on_login)
+    
+    # Subscribe to market data
+    for sym_key, cfg in SYMBOLS.items():
+        parts = cfg['vt'].split('.')
+        from vnpy.trader.object import SubscribeRequest
+        from vnpy.trader.constant import Exchange
+        exchange = Exchange.DCE if parts[0] == 'DCE' else Exchange.CZCE
+        req = SubscribeRequest(symbol=parts[1], exchange=exchange)
+        main_engine.subscribe(req, "CTP")
+        print(f"  Subscribed: {sym_key} ({cfg['vt']})")
+    
+    print("\n" + "="*60)
+    print("  V26 Dynamic Loop — Model + Trail + Breakeven")
+    print("  LH: hardATR×0.8 trail2ATR be1ATR model0.35/0.65")
+    print("  JM: hardATR×1.8 trail3ATR be2ATR model0.30/0.70")
+    print("="*60 + "\n")
+    
+    TRADED_TODAY = {}
+    positions = {}
+    today_str = datetime.now().strftime('%Y%m%d')
+    BAR_INTERVAL = 300
+    
+    while running:
+        now = datetime.now()
+        current_date = now.strftime('%Y%m%d')
+        if current_date != today_str:
+            TRADED_TODAY.clear(); today_str = current_date
+        
+        # Trading hours check
+        wd = now.weekday(); h, m = now.hour, now.minute
+        t = h * 60 + m
+        in_trading = wd < 5 and ((540 <= t < 615) or (630 <= t < 690) or (810 <= t < 900))
+        
+        if not in_trading:
+            time.sleep(BAR_INTERVAL)
+            continue
+        
+        print(f"\n[{now.strftime('%H:%M:%S')}] V26 Signal scan...")
+        
+        try:
+            sigs = generate_signals(models)
+        except Exception as e:
+            print(f"  Signal error: {e}")
+            time.sleep(BAR_INTERVAL)
+            continue
+        
+        for sym_key, signal in sigs.items():
+            if sym_key in TRADED_TODAY or sym_key in positions: continue
+            if signal['pos_size'] == 0: continue
+            
+            emoji = '🟢' if signal['signal'] == 'LONG' else '🔴'
+            price = signal['price']
+            pos_size = signal['pos_size']
+            entry_stop = signal['entry_stop']
+            display_tp = signal['display_tp']
+            cfg = signal['cfg']
+            
+            margin_est = pos_size * price * cfg['multiplier'] * 0.15
+            
+            print(f"  {emoji} {sym_key} {signal['signal']} {pos_size}手 @ {price:.0f} "
+                  f"(约{margin_est/10000:.1f}万) conf={signal['confidence']:.2f}")
+            print(f"    V26: 硬止损={entry_stop:.0f} | 参考目标={display_tp:.0f} | "
+                  f"移动{cfg['trail_atr']}ATR | 保本{cfg['be_atr']}ATR")
+            
+            # Check stop already hit (using minute data)
+            try:
+                today_str2 = datetime.now().strftime('%Y-%m-%d')
+                minute_df = ak.futures_zh_minute_sina(symbol=sym_key.upper(), period='5')
+                if minute_df is not None and len(minute_df) > 0:
+                    minute_df['dt'] = pd.to_datetime(minute_df['datetime'])
+                    today_df = minute_df[minute_df['dt'].dt.strftime('%Y-%m-%d') == today_str2]
+                    if len(today_df) > 0:
+                        th = float(today_df['high'].max()); tl = float(today_df['low'].min())
+                        already = (signal['signal'] == 'LONG' and tl <= entry_stop) or \
+                                  (signal['signal'] == 'SHORT' and th >= entry_stop)
+                        if already:
+                            print(f"    ⚠️ 当日已触发止损，跳过")
+                            continue
+            except: pass
+            
+            # Place entry order via CTP
+            parts = cfg['vt'].split('.')
+            from vnpy.trader.object import OrderRequest
+            from vnpy.trader.constant import Exchange
+            exchange = Exchange.DCE if parts[0] == 'DCE' else Exchange.CZCE
+            entry_dir = Direction.LONG if signal['signal'] == 'LONG' else Direction.SHORT
+            
+            try:
+                req = OrderRequest(
+                    symbol=parts[1], exchange=exchange,
+                    direction=entry_dir, offset=Offset.OPEN,
+                    price=float(price), volume=int(pos_size),
+                    type=OrderType.LIMIT
+                )
+                main_engine.send_order(req, "CTP")
+                TRADED_TODAY[sym_key] = now
+                positions[sym_key] = {
+                    'dir': signal['signal'], 'vol': pos_size,
+                    'entry': price, 'entry_time': now.isoformat(),
+                    'entry_stop': entry_stop, 'display_tp': display_tp,
+                }
+                print(f"    ✅ 已发单 [V26]")
+            except Exception as e:
+                print(f"    Order error: {e}")
+        
+        for _ in range(BAR_INTERVAL):
+            if not running: break
+            time.sleep(1)
+    
+    print("\nShutting down...")
+    main_engine.close()
+
+if __name__ == '__main__':
+    main()

@@ -29,6 +29,7 @@ SYMBOLS = {
 CAPITAL = 300000
 MODEL_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'models')
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+PRED_HISTORY_FILE = os.path.join(MODEL_DIR, 'pred_history.json')
 
 STATE_FILES = {
     'V25': 'paper_state.json',
@@ -40,13 +41,38 @@ STATE_FILES = {
 #  数据加载
 # ============================================================
 
-def get_model_prediction(sym_key):
-    """获取模型预测 — 优先校准模型"""
-    for suffix in ['_xgb_calibrated.pkl', '_xgb.pkl']:
-        mp = os.path.join(MODEL_DIR, f'{sym_key}{suffix}')
-        if os.path.exists(mp):
+def _load_pred_history():
+    """加载预测历史 {sym_key: [{'date': '...', 'prob': 0.5}, ...]}"""
+    if os.path.exists(PRED_HISTORY_FILE):
+        with open(PRED_HISTORY_FILE) as f:
+            return json.load(f)
+    return {}
+
+def _save_pred_history(history):
+    with open(PRED_HISTORY_FILE, 'w') as f:
+        json.dump(history, f, indent=2, ensure_ascii=False)
+
+# 每个版本的模型后缀（按优先级排列）
+VERSION_MODEL_SUFFIXES = {
+    'V25': ['_xgb.pkl'],                   # 旧模型（无校准版）
+    'V28': ['_xgb.pkl'],                   # 旧模型（无校准版）
+    'V29': ['_xgb_calibrated.pkl', '_xgb_new.pkl'],  # 新模型校准版
+}
+
+def get_model_prediction(sym_key, ver=None):
+    """获取模型预测 — 支持指定版本，含前一日比对"""
+    if ver:
+        suffixes = VERSION_MODEL_SUFFIXES.get(ver, ['_xgb_calibrated.pkl', '_xgb.pkl'])
+    else:
+        suffixes = ['_xgb_calibrated.pkl', '_xgb.pkl']
+
+    mp = None
+    for suffix in suffixes:
+        candidate = os.path.join(MODEL_DIR, f'{sym_key}{suffix}')
+        if os.path.exists(candidate):
+            mp = candidate
             break
-    if not os.path.exists(mp):
+    if mp is None:
         return None
     try:
         with open(mp, 'rb') as f: model = pickle.load(f)
@@ -60,12 +86,34 @@ def get_model_prediction(sym_key):
         direction = 'LONG' if prob > 0.5 else 'SHORT'
         confidence = prob if prob > 0.5 else (1 - prob)
         last_date = str(daily_df.iloc[-1]['date'])
-        return {
+
+        # ── 比对前一日 ──
+        prev_prob = None
+        history = _load_pred_history()
+        hist_key = f"{sym_key}_{ver}" if ver else sym_key
+        entries = history.get(hist_key, [])
+        if entries:
+            prev = entries[-1]
+            if prev.get('date') != last_date:  # 日期不同，可比
+                prev_prob = prev.get('prob')
+
+        # 保存当前
+        entries.append({'date': last_date, 'prob': prob})
+        history[hist_key] = entries[-30:]
+        _save_pred_history(history)
+
+        result = {
             'direction': direction,
             'prob': prob,
             'confidence': confidence,
             'last_date': last_date,
+            'model_used': os.path.basename(mp),
         }
+        if prev_prob is not None:
+            delta = prob - prev_prob
+            result['delta'] = delta
+            result['prev_prob'] = prev_prob
+        return result
     except:
         return None
 
@@ -292,34 +340,47 @@ def build_market_table(market_data):
         )
     return "\n".join(lines)
 
-def build_model_table(model_preds, positions_rows):
-    """模型预测表格"""
-    if not model_preds:
+def build_model_table(version_preds, positions_rows):
+    """模型预测表格 — 按版本分别展示"""
+    if not version_preds:
         return None
 
-    ref_date = list(model_preds.values())[0]['last_date']
+    # 取第一个有效预测的日期
+    ref_date = ""
+    for ver_preds in version_preds.values():
+        if ver_preds:
+            ref_date = list(ver_preds.values())[0].get('last_date', '')
+            break
+
+    # 收集所有品种名
+    all_syms = set()
+    for ver_preds in version_preds.values():
+        all_syms.update(ver_preds.keys())
+
     lines = [
         f"**🧠 模型预测**（{ref_date} 日线）\n",
-        "| 品种 | 方向 | 概率 | 置信度 |",
-        "|------|------|------|--------|",
+        "| 版本 | 品种 | 方向 | 概率 | 变化 |",
+        "|------|------|------|------|------|",
     ]
-    for sym_key, mp in model_preds.items():
-        name = SYMBOLS[sym_key]['name']
-        emoji = '🟢' if mp['direction'] == 'LONG' else '🔴'
-        dir_cn = '偏多' if mp['direction'] == 'LONG' else '偏空'
+    for ver_label in ['V25', 'V28', 'V29']:
+        ver_preds = version_preds.get(ver_label, {})
+        for sym_key in sorted(all_syms):
+            mp = ver_preds.get(sym_key)
+            if not mp:
+                lines.append(f"| {ver_label} | {SYMBOLS.get(sym_key,{}).get('name',sym_key)} | — | — | — |")
+                continue
+            name = SYMBOLS[sym_key]['name']
+            emoji = '🟢' if mp['direction'] == 'LONG' else '🔴'
+            dir_cn = '偏多' if mp['direction'] == 'LONG' else '偏空'
+            delta_str = ""
+            if 'delta' in mp:
+                d = mp['delta']
+                arrow = '↑' if d > 0 else '↓' if d < 0 else '→'
+                delta_str = f"{arrow}{abs(d):.1%}"
 
-        # 检查是否有版本持仓冲突
-        conflict_parts = []
-        for r in (positions_rows or []):
-            if r['name'] == name:
-                pos_dir = 'LONG' if r['dir'] == '做多' else 'SHORT'
-                if pos_dir != mp['direction']:
-                    conflict_parts.append(f"{r['ver']}冲突")
-        conflict = f" ⚠️ {'/'.join(conflict_parts)}" if conflict_parts else ""
-
-        lines.append(
-            f"| {name} | {emoji} **{dir_cn}** | {mp['prob']:.1%} | {mp['confidence']:.1%}{conflict} |"
-        )
+            lines.append(
+                f"| {ver_label} | {name} | {emoji} **{dir_cn}** | {mp['prob']:.1%} | {delta_str} |"
+            )
     return "\n".join(lines)
 
 def build_actions(positions_rows, market_data):
@@ -430,12 +491,15 @@ def generate_report(mode='morning'):
     if not market_data:
         return "⚠️ 无法获取行情数据", ("", "", "", [])
 
-    # 模型预测
-    model_preds = {}
-    for sym_key in SYMBOLS:
-        mp = get_model_prediction(sym_key)
-        if mp:
-            model_preds[sym_key] = mp
+    # 模型预测 — 按版本分别加载
+    version_preds = {}
+    for ver in ['V25', 'V28', 'V29']:
+        ver_preds = {}
+        for sym_key in SYMBOLS:
+            mp = get_model_prediction(sym_key, ver=ver)
+            if mp:
+                ver_preds[sym_key] = mp
+        version_preds[ver] = ver_preds
 
     # 所有持仓
     positions_rows = collect_all_positions(market_data)
@@ -474,7 +538,7 @@ def generate_report(mode='morning'):
     elements.append(hr())
 
     # 3. 模型预测表格
-    model_table = build_model_table(model_preds, positions_rows)
+    model_table = build_model_table(version_preds, positions_rows)
     if model_table:
         elements.append(md(model_table))
         elements.append(hr())

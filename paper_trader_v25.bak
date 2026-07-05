@@ -12,9 +12,7 @@ import xgboost as xgb
 import pickle
 try:
     from feishu_send import send_alert, send_scan
-except Exception as _fe:
-    import sys
-    print(f"[WARN] feishu_send import failed: {_fe}. Feishu alerts disabled.", file=sys.stderr, flush=True)
+except: pass
 
 # ===== CONFIG =====
 SYMBOLS = {
@@ -26,7 +24,6 @@ SYMBOLS = {
         'trail_atr': 2.0,      # 移动止损启动: 盈利>2ATR
         'be_atr': 1.0,         # 保本启动: 盈利>1ATR
         'trail_dist': 1.5,     # 移动止损距离 ATR倍数
-        'rr': 4.0,             # 止盈风险比 (V26修复: 不应用trail_atr+trail_dist当RR)
         'model_low': 0.35,     # LONG exit: prob<0.35
         'model_high': 0.65,    # SHORT exit: prob>0.65
         'confirm_bars': 2,     # 反转确认K线数
@@ -40,7 +37,6 @@ SYMBOLS = {
         'trail_atr': 3.0,      # 移动止损启动: 盈利>3ATR
         'be_atr': 2.0,         # 保本启动: 盈利>2ATR
         'trail_dist': 2.5,     # 移动止损距离
-        'rr': 3.5,             # 止盈风险比 (V26修复: 不应用trail_atr+trail_dist当RR)
         'model_low': 0.30,     # LONG exit: prob<0.30
         'model_high': 0.70,    # SHORT exit: prob>0.70
         'confirm_bars': 3,     # 反转确认K线数 (JM趋势强需更多确认)
@@ -144,64 +140,6 @@ def load_state():
 def save_state(state):
     with open(STATE_FILE, 'w') as f: json.dump(state, f, indent=2, default=str)
 
-# ===== STARTUP REFRESH (每次唤醒自动更新止损止盈) =====
-def refresh_stops_on_startup(state):
-    """用最新日线数据重新计算所有持仓的止损止盈。只紧不松。"""
-    import akshare as ak
-    changed = False
-    for sym_key in list(state['positions'].keys()):
-        pos = state['positions'][sym_key]
-        cfg = SYMBOLS.get(sym_key)
-        if not cfg: continue
-        
-        try:
-            df = ak.futures_main_sina(symbol=cfg['code'])
-            df = df.rename(columns={'日期':'date','开盘价':'open','最高价':'high','最低价':'low','收盘价':'close'})
-            for c in ['open','high','low','close']:
-                df[c] = pd.to_numeric(df[c], errors='coerce')
-            df = df.dropna(subset=['close']).tail(60)
-            if len(df) < 20: continue
-            
-            df['tr'] = np.maximum(
-                df['high'] - df['low'],
-                np.maximum(
-                    abs(df['high'] - df['close'].shift(1)),
-                    abs(df['low'] - df['close'].shift(1))
-                )
-            )
-            atr = df['tr'].tail(20).mean()
-            price = float(df['close'].iloc[-1])
-            stop_dist = atr * cfg['hard_atr']
-            rr = cfg.get('rr', 3.5)
-            
-            old_stop = pos.get('stop', 0)
-            old_tp = pos.get('take_profit', 0)
-            
-            if pos['dir'] == 'LONG':
-                new_stop = price - stop_dist
-                new_stop = max(new_stop, old_stop)  # 只紧不松
-                actual_dist = price - new_stop
-                new_tp = price + actual_dist * rr
-            else:
-                new_stop = price + stop_dist
-                new_stop = min(new_stop, old_stop)  # 只紧不松
-                actual_dist = new_stop - price
-                new_tp = price - actual_dist * rr
-            
-            pos['stop'] = round(new_stop, 1)
-            pos['take_profit'] = round(new_tp, 1)
-            new_s = pos['stop']
-            new_t = pos['take_profit']
-            print(f'  [Refresh] {sym_key}: stop {old_stop}→{new_s} | tp {old_tp}→{new_t} (RR={rr})')
-            changed = True
-        except Exception as e:
-            print(f'  [Refresh] {sym_key}: FAILED ({e})')
-    
-    if changed:
-        save_state(state)
-        print(f'  [Refresh] State saved.')
-    return changed
-
 # ===== V26 DYNAMIC EXIT =====
 def check_v26_exit(sym_key, pos, models, df, now):
     """
@@ -285,9 +223,7 @@ def check_v26_exit(sym_key, pos, models, df, now):
     else:
         hard_stop = price + hard_stop_dist
         
-        trail_stop = pos.get('_trail_stop')
-        if trail_stop is None or trail_stop == 0:  # 0 是之前 bug 的残留值
-            trail_stop = price + atr * (cfg['hard_atr'] + 0.5)
+        trail_stop = pos.get('_trail_stop', price + atr * (cfg['hard_atr'] + 0.5))
         if bar_count >= cfg['min_hold'] and price < entry - atr * cfg['trail_atr']:
             new_trail = price + atr * cfg['trail_dist']
             trail_stop = min(trail_stop, new_trail)
@@ -322,21 +258,16 @@ def main():
     print(f"  JM: 硬止损ATR×1.8 | 模型退出prob 0.30/0.70 | 移动止损3ATR")
     print("=" * 60)
 
-    # Load models — V25 用旧模型
+    # Load models
     models = {}
     print("\nLoading models...")
     for sym_key in SYMBOLS:
-        loaded = False
-        for suffix in ['_xgb.pkl']:  # V25 旧模型，不校准
-            mp = os.path.join(MODEL_DIR, f'{sym_key}{suffix}')
-            if os.path.exists(mp):
-                with open(mp, 'rb') as f:
-                    models[sym_key] = pickle.load(f)
-                print(f"  {sym_key}: loaded ({os.path.basename(mp)})")
-                loaded = True
-                break
-        if not loaded:
-            print(f"  {sym_key}: missing model")
+        mp = os.path.join(MODEL_DIR, f'{sym_key}_xgb.pkl')
+        if os.path.exists(mp):
+            with open(mp, 'rb') as f: models[sym_key] = pickle.load(f)
+            print(f"  {sym_key}: loaded")
+        else:
+            print(f"  {sym_key}: missing {mp}")
 
     # Load state
     state = load_state()
@@ -346,23 +277,10 @@ def main():
             cfg = SYMBOLS.get(k, {})
             # Initialize v26 tracking fields
             v.setdefault('_rev_count', 0)
-            if v.get('_trail_stop', 0) == 0:  # 清理旧bug残留
-                if '_trail_stop' in v: del v['_trail_stop']
+            v.setdefault('_trail_stop', 0)
             v.setdefault('bar_count', 0)
             print(f"  {k}: {v['dir']} {v['vol']}手 @ {v['entry']} "
                   f"stop={v.get('stop','?')} tp={v.get('take_profit','?')}")
-    
-    # 每次启动自动用最新数据刷新止损止盈 (只紧不松)
-    print(f"\n{'='*60}")
-    print(f"  启动刷新: 用最新日线数据更新止损止盈...")
-    refresh_stops_on_startup(state)
-    print(f"  刷新后现金: ¥{state['cash']:,.0f}")
-    if state['positions']:
-        for k, v in state['positions'].items():
-            stop_d = abs(v['entry'] - v['stop'])
-            tp_d = abs(v['entry'] - v['take_profit'])
-            rr = tp_d / stop_d if stop_d > 0 else 0
-            print(f"  {k}: {v['dir']} {v['vol']}手 stop={v['stop']} tp={v['take_profit']} RR={rr:.1f}")
     
     print(f"\n{'='*60}")
     print(f"  V26 动态止盈止损已就绪")
@@ -492,8 +410,9 @@ def main():
             else:
                 entry_stop = price + stop_dist
 
-            # Correct TP using actual RR config (V26 fix: was using trail_atr+trail_dist)
-            display_rr = cfg.get('rr', 3.5)  # fallback 3.5 if rr not set
+            # Compatible TP (for display/fallback)
+            # Use trail_atr × trail_dist as RR equivalent for display TP
+            display_rr = cfg['trail_atr'] + cfg['trail_dist']
             if signal_dir == 'LONG':
                 display_tp = price + (price - entry_stop) * display_rr
             else:
@@ -541,7 +460,7 @@ def main():
                 'entry': price, 'entry_time': now.isoformat(),
                 'stop': entry_stop, 'take_profit': display_tp,
                 'cost_pct': cost_pct,
-                '_rev_count': 0, 'bar_count': 0,
+                '_rev_count': 0, '_trail_stop': 0, 'bar_count': 0,
             }
             state['cash'] -= margin_used * cost_pct
             traded_today.add(sym_key)
