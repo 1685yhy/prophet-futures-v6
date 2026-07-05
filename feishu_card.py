@@ -1,11 +1,12 @@
 #!/usr/bin/env python3
-"""飞书卡片消息发送工具 — 共享模块"""
+"""飞书卡片消息发送工具 — 共享模块 v2
+Card 2.0 schema + markdown 元素，支持表格渲染
+"""
 import json, os, urllib.request, urllib.error
 
 ENV_FILE = os.path.expanduser("~/.hermes/.env")
 
 def _load_env():
-    """从 Hermes .env 读取飞书凭证"""
     env = {}
     if os.path.exists(ENV_FILE):
         with open(ENV_FILE) as f:
@@ -17,13 +18,11 @@ def _load_env():
     return env
 
 def _get_token():
-    """获取 tenant_access_token"""
     env = _load_env()
     app_id = env.get("FEISHU_APP_ID", "")
     app_secret = env.get("FEISHU_APP_SECRET", "")
     if not app_id or not app_secret:
         return None
-
     req = urllib.request.Request(
         "https://open.feishu.cn/open-apis/auth/v3/tenant_access_token/internal",
         data=json.dumps({"app_id": app_id, "app_secret": app_secret}).encode(),
@@ -31,33 +30,39 @@ def _get_token():
         method="POST"
     )
     with urllib.request.urlopen(req) as resp:
-        data = json.loads(resp.read())
-        return data.get("tenant_access_token")
+        return json.loads(resp.read()).get("tenant_access_token")
 
 _open_id_cache = None
+_chat_id_cache = None
+
+def _get_chat_id():
+    global _chat_id_cache
+    if _chat_id_cache:
+        return _chat_id_cache
+    env = _load_env()
+    # 尝试从 env 读取 chat_id
+    chat_id = env.get("FEISHU_CHAT_ID", "")
+    if chat_id:
+        _chat_id_cache = chat_id
+        return chat_id
+    # 回退到 DM open_id
+    return None
 
 def _get_open_id():
-    """获取用于接收消息的 open_id（ou_ 开头）"""
     global _open_id_cache
     if _open_id_cache:
         return _open_id_cache
-
     env = _load_env()
     allowed = env.get("FEISHU_ALLOWED_USERS", "")
-
-    # 如果已经是 open_id 格式，直接返回
     if allowed.startswith("ou_"):
         _open_id_cache = allowed
         return allowed
-
-    # 用 user_id 先获取 token，再调 API 拿 open_id
+    # 尝试通过 user_id 查询 open_id
     app_id = env.get("FEISHU_APP_ID", "")
     app_secret = env.get("FEISHU_APP_SECRET", "")
     if not app_id or not app_secret:
         return allowed
-
     try:
-        # 获取新 token
         req = urllib.request.Request(
             "https://open.feishu.cn/open-apis/auth/v3/tenant_access_token/internal",
             data=json.dumps({"app_id": app_id, "app_secret": app_secret}).encode(),
@@ -66,66 +71,68 @@ def _get_open_id():
         )
         with urllib.request.urlopen(req) as resp:
             token = json.loads(resp.read()).get("tenant_access_token", "")
-
         if not token:
             return allowed
-
-        # 查用户 open_id
         req2 = urllib.request.Request(
             f"https://open.feishu.cn/open-apis/contact/v3/users/{allowed}?user_id_type=user_id",
             headers={"Authorization": f"Bearer {token}"},
         )
         with urllib.request.urlopen(req2) as resp2:
             data = json.loads(resp2.read())
-            open_id = data.get("data", {}).get("user", {}).get("open_id", "")
-            if open_id:
-                _open_id_cache = open_id
-                return open_id
-    except Exception as e:
-        pass
+            _open_id_cache = data.get("data", {}).get("user", {}).get("open_id", "")
+            return _open_id_cache
+    except:
+        return allowed
 
-    return allowed
+def send_card(title, elements, template="blue", subtitle=None, pin=False):
+    """发送飞书卡片消息 — Card 2.0 schema
 
-def send_card(title, elements, template="blue", subtitle=None):
-    """发送飞书卡片消息（旧版格式，兼容性好）
-    
     Args:
         title: 卡片标题
-        elements: 卡片元素列表，每项 {"tag": "div", "text": {"tag": "lark_md", "content": "..."}}
-        template: 标题颜色 (blue/red/green/purple)
+        elements: 元素列表，每项用 md() 创建，支持 markdown 表格
+        template: 标题颜色 (blue/red/green/purple/yellow)
         subtitle: 副标题（可选）
-    
+        pin: 是否置顶
+
     Returns:
         (success: bool, message: str)
     """
     token = _get_token()
     if not token:
-        return False, "无法获取飞书token，检查.env中的FEISHU_APP_ID/FEISHU_APP_SECRET"
+        return False, "无法获取飞书token"
 
-    open_id = _get_open_id()
-    if not open_id:
-        return False, "找不到接收人，检查FEISHU_ALLOWED_USERS"
+    # 优先用 chat_id（群聊），否则用 open_id（私聊）
+    chat_id = _get_chat_id()
+    if chat_id:
+        receive_id = chat_id
+        receive_id_type = "chat_id"
+    else:
+        receive_id = _get_open_id()
+        receive_id_type = "open_id"
+    if not receive_id:
+        return False, "找不到接收人"
 
     card = {
+        "schema": "2.0",
         "config": {"wide_screen_mode": True},
         "header": {
             "title": {"tag": "plain_text", "content": title},
             "template": template
         },
-        "elements": elements
+        "body": {"elements": elements}
     }
     if subtitle:
         card["header"]["subtitle"] = {"tag": "plain_text", "content": subtitle}
 
     payload = {
-        "receive_id": open_id,
+        "receive_id": receive_id,
         "msg_type": "interactive",
         "content": json.dumps(card, ensure_ascii=False)
     }
     body = json.dumps(payload, ensure_ascii=False).encode("utf-8")
 
     req = urllib.request.Request(
-        "https://open.feishu.cn/open-apis/im/v1/messages?receive_id_type=open_id",
+        f"https://open.feishu.cn/open-apis/im/v1/messages?receive_id_type={receive_id_type}",
         data=body,
         headers={"Authorization": f"Bearer {token}", "Content-Type": "application/json; charset=utf-8"},
         method="POST"
@@ -134,7 +141,10 @@ def send_card(title, elements, template="blue", subtitle=None):
         with urllib.request.urlopen(req) as resp:
             result = json.loads(resp.read())
             if result.get("code") == 0:
-                return True, result["data"]["message_id"]
+                msg_id = result["data"]["message_id"]
+                if pin:
+                    _pin_message(token, msg_id)
+                return True, msg_id
             return False, f"API错误({result.get('code')}): {result.get('msg', 'unknown')}"
     except urllib.error.HTTPError as e:
         err_body = e.read().decode()[:300]
@@ -142,28 +152,34 @@ def send_card(title, elements, template="blue", subtitle=None):
     except Exception as e:
         return False, str(e)
 
+def _pin_message(token, msg_id):
+    try:
+        req = urllib.request.Request(
+            f"https://open.feishu.cn/open-apis/im/v1/messages/{msg_id}/pin",
+            headers={"Authorization": f"Bearer {token}"},
+            method="POST",
+            data=b"{}"
+        )
+        urllib.request.urlopen(req)
+    except:
+        pass
+
 def md(text):
-    """快捷创建 lark_md div 元素"""
-    return {"tag": "div", "text": {"tag": "lark_md", "content": text}}
+    """创建 markdown 元素 — Card 2.0 格式，支持表格"""
+    return {"tag": "markdown", "content": text}
 
 def hr():
     """分隔线"""
     return {"tag": "hr"}
 
-def section(title, body):
-    """创建一个带标题的区块"""
-    elems = [md(f"**{title}**\n\n{body}")]
-    return elems
+def note(text):
+    """备注块"""
+    return {"tag": "note", "elements": [{"tag": "plain_text", "content": text}]}
 
-# ── 下面是根据计算逻辑生成具体的操作建议文本 ──
+# ── 操作建议生成（保留兼容）──
 
 def build_position_actions(positions, market_data, sym_configs, mode="morning"):
-    """生成持仓操作建议 — 每品种一句话结论 + 一个明确操作
-    
-    格式：
-      🟢 LH 做多 3手 | +620点 (2.7 ATR) | 距止损45点 ⚠️ 
-      → 减1手至2手，止损上移至12300
-    """
+    """生成持仓操作建议"""
     lines = []
     for sym_key, m in market_data.items():
         cfg = sym_configs.get(sym_key, {})
@@ -192,7 +208,6 @@ def build_position_actions(positions, market_data, sym_configs, mode="morning"):
             emoji = "🟢" if pnl_pts > 0 else "🔴"
             dir_cn = "做多" if d == 'LONG' else "做空"
 
-            # 风险紧密度
             if dist_atr < 0.5:
                 risk_tag = f"距止损{dist_stop:.0f}点 🚨"
             elif dist_atr < 1.0:
@@ -202,17 +217,14 @@ def build_position_actions(positions, market_data, sym_configs, mode="morning"):
             else:
                 risk_tag = f"安全垫{dist_stop:.0f}点"
 
-            # 一行摘要
             lines.append(f"{emoji} **{name}** {dir_cn} {vol}手 | {'+' if pnl_pts>0 else ''}{pnl_pts:.0f}点 ({pnl_atr:.1f}ATR) | {risk_tag}")
             lines.append(f"　成本{entry:.0f} → 现价{price:.0f} | 止损{stop:.0f} | 止盈{tp:.0f}")
 
-            # ── 一个明确操作 ──
             be_atr = cfg.get('be_atr', 1.0)
             reduce1_atr = cfg.get('reduce1_atr', 2.0)
             reduce2_atr = cfg.get('reduce2_atr', 4.0)
 
             if dist_atr < 0.5:
-                # 🚨 止损即将触发
                 lines.append(f"→ 🚨 **止损在即**: 距止损仅 {dist_stop:.0f} 点，一旦触发立即出场。不要加仓。")
             elif pnl_atr < be_atr:
                 target = entry + atr * be_atr if d == 'LONG' else entry - atr * be_atr
@@ -231,7 +243,6 @@ def build_position_actions(positions, market_data, sym_configs, mode="morning"):
             else:
                 keep = max(1, int(vol * (1 - cfg.get('reduce2_pct', 0.5))))
                 lines.append(f"→ 🔔 **锁利**: 大幅盈利，建议减至 {keep}手 锁利润")
-
         else:
             atr_pct = m.get('atr_pct', atr / price)
             if atr_pct < 0.01: lev = 3.0
@@ -240,32 +251,15 @@ def build_position_actions(positions, market_data, sym_configs, mode="morning"):
             elif atr_pct < 0.05: lev = 0.5
             else: lev = 0
             vol = max(1, int(lev * (cfg['max_pos'] // 2))) if lev > 0 else 0
-
             if vol > 0:
-                sm = cfg['stop_mult']
-                rr = cfg['rr']
-                ls = price - atr * sm
-                ss = price + atr * sm
-                lt = price + (price - ls) * rr
-                st = price - (ss - price) * rr
+                sm = cfg['stop_mult']; rr = cfg['rr']
+                ls = price - atr * sm; ss = price + atr * sm
+                lt = price + (price - ls) * rr; st = price - (ss - price) * rr
                 mg = vol * price * cfg['multiplier'] * 0.15
                 lines.append(f"⚪ **{name}** 空仓 | 现价 {price:.0f} | {trend}")
                 lines.append(f"→ 🟢 做多: 入场{price:.0f} 止损**{ls:.0f}** 止盈**{lt:.0f}** | {vol}手 ¥{mg/10000:.1f}万")
                 lines.append(f"→ 🔴 做空: 入场{price:.0f} 止损**{ss:.0f}** 止盈**{st:.0f}** | {vol}手 ¥{mg/10000:.1f}万")
             else:
                 lines.append(f"⚪ **{name}** 空仓 | 观望 (波动 {atr_pct:.1%} 过大)")
-
         lines.append("")
-
     return "\n".join(lines).rstrip()
-
-def build_market_table(market_data, sym_configs):
-    """生成行情表格"""
-    rows = ["| 品种 | 现价 | 涨跌 | ATR | 趋势 |",
-            "|------|------|------|-----|------|"]
-    for sym_key, m in market_data.items():
-        name = sym_configs.get(sym_key, {}).get('name', sym_key)
-        rows.append(
-            f"| {name} | {m['price']:.0f} | {m['chg']:+.1%} | {m['atr']:.0f} | {m.get('trend','↔️')} |"
-        )
-    return "\n".join(rows)
