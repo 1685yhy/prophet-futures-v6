@@ -322,16 +322,22 @@ def main():
     print(f"  JM: 硬止损ATR×1.8 | 模型退出prob 0.30/0.70 | 移动止损3ATR")
     print("=" * 60)
 
-    # Load models
+    # Load models — 优先校准版
     models = {}
     print("\nLoading models...")
     for sym_key in SYMBOLS:
-        mp = os.path.join(MODEL_DIR, f'{sym_key}_xgb.pkl')
-        if os.path.exists(mp):
-            with open(mp, 'rb') as f: models[sym_key] = pickle.load(f)
-            print(f"  {sym_key}: loaded")
-        else:
-            print(f"  {sym_key}: missing {mp}")
+        loaded = False
+        for suffix in ['_xgb_calibrated.pkl', '_xgb.pkl']:
+            mp = os.path.join(MODEL_DIR, f'{sym_key}{suffix}')
+            if os.path.exists(mp):
+                with open(mp, 'rb') as f:
+                    models[sym_key] = pickle.load(f)
+                tag = 'calibrated' if 'calibrated' in suffix else 'raw'
+                print(f"  {sym_key}: loaded ({tag})")
+                loaded = True
+                break
+        if not loaded:
+            print(f"  {sym_key}: missing model")
 
     # Load state
     state = load_state()
