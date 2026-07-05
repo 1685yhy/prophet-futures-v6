@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 """
-Prophet Futures — Paper Trading Engine V29
-新模型驱动动态交易: 持有/加仓/减仓/反手
-V29 = V28逻辑 + 每周重训新模型 (_xgb_new.pkl)
-独立状态文件 paper_state_v29.json
+Prophet Futures — Paper Trading Engine V30
+校准模型驱动动态交易: 持有/加仓/减仓/反手
+V30 = V29逻辑 + Platt校准模型 (_xgb_calibrated.pkl)
+独立状态文件 paper_state_v30.json
 """
 import sys, os, time, json, signal, pickle
 import numpy as np, pandas as pd
@@ -46,8 +46,8 @@ SYMBOLS = {
 
 CAPITAL = 300000
 MODEL_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'models')
-STATE_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'paper_state_v29.json')
-TRADE_LOG = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'trade_journal_v29.log')
+STATE_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'paper_state_v30.json')
+TRADE_LOG = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'trade_journal_v30.log')
 BAR_INTERVAL = 300  # 5 min scan
 
 running = True
@@ -133,18 +133,24 @@ def calc_position_size(capital, price, atr, cfg):
 def main():
     global running
     print('=' * 60)
-    print('  Prophet V29 — 动态加仓/减仓/反手引擎')
-    print('  Capital: ¥%s  |  %s' % (format(CAPITAL, ','), datetime.now().strftime('%Y-%m-%d %H:%M')))
+    print('  Prophet V30 — 校准模型动态交易引擎')
+    print('  Capital: ¥{:,}  |  {}'.format(CAPITAL, datetime.now().strftime('%Y-%m-%d %H:%M')))
     print('  LH: ATR×1.5 加仓>2ATR&65% 反手<35% | JM: ATR×2.0 加仓>2.5ATR&65% 反手<30%')
     print('=' * 60)
 
-    # Load models
+    # Load models — V30 用校准模型
     models = {}
     for sym_key in SYMBOLS:
-        mp = os.path.join(MODEL_DIR, sym_key+'_xgb_new.pkl')
-        if os.path.exists(mp):
-            with open(mp, 'rb') as f: models[sym_key] = pickle.load(f)
-            print('  %s: loaded' % sym_key)
+        loaded = False
+        for suffix in ['_xgb_calibrated.pkl', '_xgb_new.pkl']:
+            mp = os.path.join(MODEL_DIR, sym_key+suffix)
+            if os.path.exists(mp):
+                with open(mp, 'rb') as f: models[sym_key] = pickle.load(f)
+                print('  %s: loaded (%s)' % (sym_key, os.path.basename(mp)))
+                loaded = True
+                break
+        if not loaded:
+            print('  %s: missing model' % sym_key)
 
     # Load state
     state = load_state()
@@ -160,7 +166,7 @@ def main():
                 print('  %s: %s %d手 @ %s' % (k, v['dir'], v['vol'], v['entry']))
 
     print('\n' + '='*60)
-    print('  V29 引擎就绪 (独立状态: paper_state_v29.json)')
+    print('  V30 引擎就绪 (独立状态: paper_state_v30.json)')
     print('='*60 + '\n')
 
     traded_today = set()

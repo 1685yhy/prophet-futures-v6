@@ -35,6 +35,14 @@ STATE_FILES = {
     'V25': 'paper_state.json',
     'V28': 'paper_state_v28.json',
     'V29': 'paper_state_v29.json',
+    'V30': 'paper_state_v30.json',
+}
+
+VERSION_INFO = {
+    'V25': {'name': 'V25 原版',    'strategy': '固定止损+模型退出', 'model': '_xgb.pkl (旧模型)', 'desc': '基准版本'},
+    'V28': {'name': 'V28 动态',    'strategy': '动态加仓/减仓/反手', 'model': '_xgb.pkl (旧模型)', 'desc': '动态策略，与V25对比策略差异'},
+    'V29': {'name': 'V29 新模型',  'strategy': '动态加仓/减仓/反手', 'model': '_xgb_new.pkl (新模型)', 'desc': '新模型，与V28对比模型差异'},
+    'V30': {'name': 'V30 校准版',  'strategy': '动态加仓/减仓/反手', 'model': '_xgb_calibrated.pkl (校准)', 'desc': '校准模型，与V29对比校准效果'},
 }
 
 # ============================================================
@@ -54,9 +62,10 @@ def _save_pred_history(history):
 
 # 每个版本的模型后缀（按优先级排列）
 VERSION_MODEL_SUFFIXES = {
-    'V25': ['_xgb.pkl'],                   # 旧模型（无校准版）
-    'V28': ['_xgb.pkl'],                   # 旧模型（无校准版）
-    'V29': ['_xgb_calibrated.pkl', '_xgb_new.pkl'],  # 新模型校准版
+    'V25': ['_xgb.pkl'],                             # 旧模型（未校准）
+    'V28': ['_xgb.pkl'],                             # 旧模型（未校准）
+    'V29': ['_xgb_new.pkl'],                         # 新模型（未校准）
+    'V30': ['_xgb_calibrated.pkl', '_xgb_new.pkl'],  # 校准模型
 }
 
 def get_model_prediction(sym_key, ver=None):
@@ -362,7 +371,7 @@ def build_model_table(version_preds, positions_rows):
         "| 版本 | 品种 | 方向 | 概率 | 变化 |",
         "|------|------|------|------|------|",
     ]
-    for ver_label in ['V25', 'V28', 'V29']:
+    for ver_label in ['V25', 'V28', 'V29', 'V30']:
         ver_preds = version_preds.get(ver_label, {})
         for sym_key in sorted(all_syms):
             mp = ver_preds.get(sym_key)
@@ -379,7 +388,7 @@ def build_model_table(version_preds, positions_rows):
                 delta_str = f"{arrow}{abs(d):.1%}"
 
             lines.append(
-                f"| {ver_label} | {name} | {emoji} **{dir_cn}** | {mp['prob']:.1%} | {delta_str} |"
+                f"| {ver_label} | {name} | {emoji} **{dir_cn}** | {mp['confidence']:.1%} | {delta_str} |"
             )
     return "\n".join(lines)
 
@@ -493,7 +502,7 @@ def generate_report(mode='morning'):
 
     # 模型预测 — 按版本分别加载
     version_preds = {}
-    for ver in ['V25', 'V28', 'V29']:
+    for ver in ['V25', 'V28', 'V29', 'V30']:
         ver_preds = {}
         for sym_key in SYMBOLS:
             mp = get_model_prediction(sym_key, ver=ver)
@@ -541,7 +550,18 @@ def generate_report(mode='morning'):
     model_table = build_model_table(version_preds, positions_rows)
     if model_table:
         elements.append(md(model_table))
-        elements.append(hr())
+
+    # 版本说明
+    ver_info_lines = [
+        "**📋 版本对比**\n",
+        "| 版本 | 模型 | 策略 | 说明 |",
+        "|------|------|------|------|",
+    ]
+    for ver_label in ['V25', 'V28', 'V29', 'V30']:
+        vi = VERSION_INFO[ver_label]
+        ver_info_lines.append(f"| **{ver_label}** {vi['name']} | {vi['model']} | {vi['strategy']} | {vi['desc']} |")
+    elements.append(md("\n".join(ver_info_lines)))
+    elements.append(hr())
 
     # 4. 操作建议（精简扫描风格）
     actions_text = build_actions(positions_rows, market_data)

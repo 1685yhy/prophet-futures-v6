@@ -96,6 +96,7 @@ def main():
         ('V25', load_state()),
         ('V28', load_state(STATE_FILE.replace('.json', '_v28.json'))),
         ('V29', load_state(STATE_FILE.replace('.json', '_v29.json'))),
+        ('V30', load_state(STATE_FILE.replace('.json', '_v30.json'))),
     ]
     alerts = []
 
