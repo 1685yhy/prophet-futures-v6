@@ -36,6 +36,7 @@ STATE_FILES = {
     'V28': 'paper_state_v28.json',
     'V29': 'paper_state_v29.json',
     'V30': 'paper_state_v30.json',
+    'V31': 'paper_state_v31.json',
     'V32': 'paper_state_v32.json',
     'V32b': 'paper_state_v32b.json',
 }
@@ -45,6 +46,7 @@ VERSION_INFO = {
     'V28': {'name': 'V28 动态',    'strategy': '动态加仓/减仓/反手', 'model': '_xgb.pkl (旧模型)', 'desc': '动态策略，与V25对比策略差异'},
     'V29': {'name': 'V29 新模型',  'strategy': '动态加仓/减仓/反手', 'model': '_xgb_new.pkl (新模型)', 'desc': '新模型，与V28对比模型差异'},
     'V30': {'name': 'V30 校准版',  'strategy': '动态加仓/减仓/反手', 'model': '_xgb_calibrated.pkl (校准)', 'desc': '校准模型，与V29对比校准效果'},
+    'V31': {'name': 'V31 基线',    'strategy': '固定止损+模型退出(重训)', 'model': '_xgb.pkl', 'desc': 'V25逻辑+新模型+1.5ATR'},
     'V32': {'name': 'V32 优化',    'strategy': '动态优化(紧止损/宽止盈)', 'model': 'v31_xgb.pkl (回测最优)', 'desc': '0.5ATR止损+6RR追踪+新模型'},
     'V32b':{'name': 'V32b 保守',   'strategy': '保守(半仓/不反手)', 'model': 'v31_xgb.pkl (新模型)', 'desc': '半仓+紧止损+极难反手'},
 }
@@ -70,6 +72,7 @@ VERSION_MODEL_SUFFIXES = {
     'V28': ['_xgb.pkl'],                             # 旧模型（未校准）
     'V29': ['_xgb_new.pkl'],                         # 新模型（未校准）
     'V30': ['_xgb_calibrated.pkl', '_xgb_new.pkl'],  # 校准模型
+    'V31': ['_xgb.pkl'],
     'V32': ['v31_xgb.pkl'],                          # V5回测最优模型
     'V32b':['v31_xgb.pkl'],                          # V5回测最优模型（保守）
 }
@@ -377,7 +380,7 @@ def build_model_table(version_preds, positions_rows):
         "| 版本 | 品种 | 方向 | 概率 | 变化 |",
         "|------|------|------|------|------|",
     ]
-    for ver_label in ['V25', 'V28', 'V29', 'V30', 'V32', 'V32b']:
+    for ver_label in ['V25', 'V28', 'V29', 'V30', 'V31', 'V32', 'V32b']:
         ver_preds = version_preds.get(ver_label, {})
         for sym_key in sorted(all_syms):
             mp = ver_preds.get(sym_key)
@@ -508,7 +511,7 @@ def generate_report(mode='morning'):
 
     # 模型预测 — 按版本分别加载
     version_preds = {}
-    for ver in ['V25', 'V28', 'V29', 'V30', 'V32', 'V32b']:
+    for ver in ['V25', 'V28', 'V29', 'V30', 'V31', 'V32', 'V32b']:
         ver_preds = {}
         for sym_key in SYMBOLS:
             mp = get_model_prediction(sym_key, ver=ver)
@@ -563,7 +566,7 @@ def generate_report(mode='morning'):
         "| 版本 | 模型 | 策略 | 说明 |",
         "|------|------|------|------|",
     ]
-    for ver_label in ['V25', 'V28', 'V29', 'V30', 'V32', 'V32b']:
+    for ver_label in ['V25', 'V28', 'V29', 'V30', 'V31', 'V32', 'V32b']:
         vi = VERSION_INFO[ver_label]
         ver_info_lines.append(f"| **{ver_label}** {vi['name']} | {vi['model']} | {vi['strategy']} | {vi['desc']} |")
     elements.append(md("\n".join(ver_info_lines)))

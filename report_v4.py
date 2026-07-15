@@ -131,6 +131,11 @@ def lv30():
     if os.path.exists(p):return json.load(open(p))
     return{'positions':{},'cash':300000}
 
+def lv31():
+    p=SF.replace('.json','_v31.json')
+    if os.path.exists(p):return json.load(open(p))
+    return{'positions':{},'cash':300000}
+
 def lv32():
     p=SF.replace('.json','_v32.json')
     if os.path.exists(p):return json.load(open(p))
@@ -508,7 +513,7 @@ def scan():
 # ===== 早报 =====
 def morning():
     sv=ls();s28=lv28();s29=lv29();s30=lv30()
-    s32=lv32();s32b=lv32b()
+    s31=lv31();s32=lv32();s32b=lv32b()
     now=datetime.now();today=now.strftime('%Y-%m-%d')
     wday=['周一','周二','周三','周四','周五','周六','周日'][now.weekday()]
     ele=[md('**%s %s 盘前** | 行情+模型预测'%(today,wday)),hr()]
@@ -528,6 +533,7 @@ def morning():
         ('V28 动态',s28,True,'_xgb.pkl'),
         ('V29 新模型',s29,True,'_xgb_new.pkl'),
         ('V30 校准版',s30,True,'_xgb_calibrated.pkl'),
+        ('V31 基线',s31,False,'_xgb.pkl'),
         ('V32 优化',s32,True,'v31_xgb.pkl'),
         ('V32b 保守',s32b,True,'v31_xgb.pkl'),
     ]
@@ -582,7 +588,7 @@ def morning():
 # ===== 晚报 =====
 def evening():
     sv=ls();s28=lv28();s29=lv29();s30=lv30()
-    s32=lv32();s32b=lv32b()
+    s31=lv31();s32=lv32();s32b=lv32b()
     now=datetime.now();today=now.strftime('%Y-%m-%d')
     ele=[md('**%s 收盘**'%today),hr()]
     
@@ -754,7 +760,7 @@ def _eval_models(week_start,week_end):
 def weekly_report():
     """生成四版本周报：卡1总览 + 卡2明细"""
     sv=ls();s28=lv28();s29=lv29();s30=lv30()
-    s32=lv32();s32b=lv32b()
+    s31=lv31();s32=lv32();s32b=lv32b()
     now=datetime.now()
     today=now.date()
     days_since_monday=today.weekday()
