@@ -50,7 +50,7 @@ CAPITAL = 300000
 MODEL_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'models')
 STATE_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'paper_state_v28.json')
 TRADE_LOG = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'trade_journal_v28.log')
-BAR_INTERVAL = 300  # 5 min scan
+BAR_INTERVAL = 60  # 1 min scan
 
 running = True
 def signal_handler(sig, frame):

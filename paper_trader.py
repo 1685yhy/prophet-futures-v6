@@ -55,7 +55,7 @@ TRADE_LOG = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'trade_jour
 VOL_LOOKBACK = 20
 MAX_LEVERAGE = 3.0
 MIN_LEVERAGE = 0.5
-BAR_INTERVAL = 300  # 5 min scan
+BAR_INTERVAL = 60  # 1 min scan
 
 running = True
 def signal_handler(sig, frame):

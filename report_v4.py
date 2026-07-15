@@ -131,6 +131,16 @@ def lv30():
     if os.path.exists(p):return json.load(open(p))
     return{'positions':{},'cash':300000}
 
+def lv32():
+    p=SF.replace('.json','_v32.json')
+    if os.path.exists(p):return json.load(open(p))
+    return{'positions':{},'cash':300000}
+
+def lv32b():
+    p=SF.replace('.json','_v32b.json')
+    if os.path.exists(p):return json.load(open(p))
+    return{'positions':{},'cash':300000}
+
 def eq(st,prices=None):
     """权益 = 现金 + 持仓保证金 + 浮动盈亏(逐日盯市)
     prices: {sym_key: 当前价格} 不传则只算保证金(兼容旧调用)"""
@@ -498,6 +508,7 @@ def scan():
 # ===== 早报 =====
 def morning():
     sv=ls();s28=lv28();s29=lv29();s30=lv30()
+    s32=lv32();s32b=lv32b()
     now=datetime.now();today=now.strftime('%Y-%m-%d')
     wday=['周一','周二','周三','周四','周五','周六','周日'][now.weekday()]
     ele=[md('**%s %s 盘前** | 行情+模型预测'%(today,wday)),hr()]
@@ -511,12 +522,14 @@ def morning():
             df=fd(S[sk]['code'])
             if df is not None:m_prices[sk]=float(df.iloc[-1]['close'])
     
-    # 四个版本 + 各自模型: V25/V28用_xgb, V29用_xgb_new, V30用_xgb_calibrated
+    # 六个版本 + 各自模型
     ver_config=[
         ('V25 原版',sv,False,'_xgb.pkl'),
         ('V28 动态',s28,True,'_xgb.pkl'),
         ('V29 新模型',s29,True,'_xgb_new.pkl'),
         ('V30 校准版',s30,True,'_xgb_calibrated.pkl'),
+        ('V32 优化',s32,True,'v31_xgb.pkl'),
+        ('V32b 保守',s32b,True,'v31_xgb.pkl'),
     ]
     
     for ver_name,ver_st,is_v28,msuffix in ver_config:
@@ -569,6 +582,7 @@ def morning():
 # ===== 晚报 =====
 def evening():
     sv=ls();s28=lv28();s29=lv29();s30=lv30()
+    s32=lv32();s32b=lv32b()
     now=datetime.now();today=now.strftime('%Y-%m-%d')
     ele=[md('**%s 收盘**'%today),hr()]
     
@@ -740,6 +754,7 @@ def _eval_models(week_start,week_end):
 def weekly_report():
     """生成四版本周报：卡1总览 + 卡2明细"""
     sv=ls();s28=lv28();s29=lv29();s30=lv30()
+    s32=lv32();s32b=lv32b()
     now=datetime.now()
     today=now.date()
     days_since_monday=today.weekday()
