@@ -26,7 +26,7 @@ SYMBOLS = {
         'add_conf': 0.70,  # V32b 更难加仓
         'add_atr': 2.0,    # 加仓: 浮盈>2ATR
         'reduce_conf': 0.45,  # V32b 更早减仓
-        'reverse_conf': 0.25  # 极难反手, # V32b 更难反手做多转空
+        'reverse_conf': 0.25,  # V32b 极难反手
         'trail_atr': 1.5,     # V32b 更早追踪
         'be_atr': 0.8,        # V32b 更早保本
         'min_hold': 3,        # 最小持仓bar
@@ -39,7 +39,7 @@ SYMBOLS = {
         'add_conf': 0.70,
         'add_atr': 2.5,
         'reduce_conf': 0.45,
-        'reverse_conf': 0.25  # 极难反手,
+        'reverse_conf': 0.25,  # V32b 极难反手
         'trail_atr': 2.0,
         'be_atr': 1.5,
         'min_hold': 5,
