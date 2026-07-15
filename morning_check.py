@@ -26,18 +26,25 @@ def check_process(name):
 def check_data():
     import akshare as ak, pandas as pd
     from datetime import datetime, timedelta
-    today = datetime.now().strftime('%Y-%m-%d')
-    yesterday = (datetime.now() - timedelta(days=1)).strftime('%Y-%m-%d')
+    today = datetime.now()
+    # Walk back to find the last trading day (skip weekends)
+    lookback = today
+    for _ in range(5):
+        lookback = lookback - timedelta(days=1)
+        if lookback.weekday() < 5:  # Mon-Fri
+            break
+    today_str = today.strftime('%Y-%m-%d')
+    last_td_str = lookback.strftime('%Y-%m-%d')
     for sym in ['LH2609', 'JM2609']:
         df = ak.futures_zh_minute_sina(symbol=sym, period='1')
         df['dt'] = pd.to_datetime(df['datetime'])
-        td = df[df['dt'].dt.strftime('%Y-%m-%d') == today]
-        # Pre-market: if no data today, check yesterday (last trading day)
+        td = df[df['dt'].dt.strftime('%Y-%m-%d') == today_str]
+        # Pre-market: if no data today, check last trading day
         if len(td) < 5:
-            yd = df[df['dt'].dt.strftime('%Y-%m-%d') == yesterday]
+            yd = df[df['dt'].dt.strftime('%Y-%m-%d') == last_td_str]
             if len(yd) >= 5:
-                continue  # yesterday had data, assume market not open yet
-            return False, f"{sym}今日数据不足({len(td)}条),昨日({len(yd)}条)"
+                continue  # last trading day had data, assume market not open yet
+            return False, f"{sym}今日数据不足({len(td)}条),上个交易日({len(yd)}条)"
     return True, "数据正常"
 
 def check_state():
@@ -69,6 +76,16 @@ def check_gateway():
         return False, "飞书网关未启动"
     return True, "网关运行中"
 
+def check_simnow_server():
+    """Check SimNow process on cloud server via SSH"""
+    r = subprocess.run(
+        "sshpass -p 'Asdfghjkl123!!' ssh -o StrictHostKeyChecking=no -o ConnectTimeout=5 "
+        "root@47.102.42.238 'pgrep -f simnow_live | wc -l'",
+        shell=True, capture_output=True, text=True, timeout=15
+    )
+    ok = int(r.stdout.strip() or 0) > 0
+    return ok, "云端运行中" if ok else "云端未启动"
+
 if __name__ == '__main__':
     print(f"Prophet Futures 早间自检 — {datetime.now().strftime('%Y-%m-%d %H:%M')}")
     print("=" * 40)
@@ -77,7 +94,7 @@ if __name__ == '__main__':
     check("模型文件", check_models)
     check("状态文件", check_state)
     check("纸盘进程", lambda: check_process('paper_trader'))
-    check("SimNow进程", lambda: check_process('simnow_live'))
+    check("SimNow(云端)", check_simnow_server)
     
     # Hermes gateway is optional — report_v4 uses direct Feishu API
     

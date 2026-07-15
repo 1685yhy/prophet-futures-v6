@@ -132,6 +132,16 @@ def calc_position_size(capital, price, atr, cfg):
 # ===== MAIN =====
 def main():
     global running
+    # PID锁
+    import fcntl
+    lock_fd = open('/tmp/paper_v29.lock', 'w')
+    try:
+        fcntl.flock(lock_fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        lock_fd.write(str(os.getpid())); lock_fd.flush()
+    except (IOError, OSError):
+        print('V29已在运行,退出')
+        sys.exit(0)
+    
     print('=' * 60)
     print('  Prophet V29 — 动态加仓/减仓/反手引擎')
     print('  Capital: ¥%s  |  %s' % (format(CAPITAL, ','), datetime.now().strftime('%Y-%m-%d %H:%M')))
@@ -207,8 +217,9 @@ def main():
             if df is None: continue
             
             price = float(df.iloc[-1]['close'])
-            high = float(df.iloc[-1]['high'])
-            low = float(df.iloc[-1]['low'])
+            # 止损检查用实时价而非日线高低（日线可能含昨天数据）
+            high = price
+            low = price
             atr = calc_atr(df, len(df)-1, 20)
             if atr is None: continue
             
@@ -447,6 +458,19 @@ def main():
                         '+%d手 @%.0f 共%d手\n浮盈%.1fATR' % (ps, price, total_now, pnl_atr),
                         color='green', pin=True)
                     except: pass
+
+        # Record equity (with unrealized PnL)
+        total_equity = state['cash']
+        for sym_key, pos_list in state['positions'].items():
+            cfg = SYMBOLS.get(sym_key, {})
+            mult = cfg.get('multiplier', 10)
+            df = daily_dfs.get(sym_key)
+            cur_price = float(df.iloc[-1]['close']) if df is not None else None
+            for p in (pos_list if isinstance(pos_list, list) else [pos_list]):
+                total_equity += p['vol'] * p['entry'] * mult * 0.15
+                if cur_price is not None:
+                    total_equity += (cur_price - p['entry']) * p['vol'] * mult if p['dir'] == 'LONG' else (p['entry'] - cur_price) * p['vol'] * mult
+        state['equity_history'].append({'time': now.isoformat(), 'equity': round(total_equity, 2)})
 
         save_state(state)
 

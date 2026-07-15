@@ -1,0 +1,15 @@
+{
+  "total_return": 5299.34,
+  "mdd": -3.16,
+  "win_rate": 42.1,
+  "n_trades": 1954,
+  "profit_factor": 7.18,
+  "final_equity": 16198015.24,
+  "avg_win": 22443.33,
+  "avg_loss": -2274.84,
+  "sharpe": 5.62,
+  "trade_types": {
+    "TRAIL_STOP": 1953,
+    "REVERSE": 1
+  }
+}

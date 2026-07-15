@@ -14,10 +14,35 @@ STATE_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'paper_sta
 PRED_HISTORY_FILE = os.path.join(MODEL_DIR, 'pred_history.json')
 
 SYMBOLS = {
-    'lh2609': {'stop_type': 'atr', 'stop_mult': 1.5, 'rr': 4, 'max_pos': 6,
-               'be_atr': 1.0, 'reduce1_atr': 2.0, 'reduce2_atr': 4.0, 'multiplier': 16},
-    'jm2609': {'stop_type': 'atr', 'stop_mult': 2.0, 'rr': 3.5, 'max_pos': 4,
-               'be_atr': 2.0, 'reduce1_atr': 3.0, 'reduce2_atr': 5.0, 'multiplier': 60},
+    # 基础品种参数（multiplier, rr 等不随版本变的）
+    'lh2609': {'multiplier': 16, 'rr': 4},
+    'jm2609': {'multiplier': 60, 'rr': 3.5},
+}
+
+# 每个版本的参数（用于扫描阈值判断）
+VERSION_CONFIGS = {
+    'V25': {
+        'lh2609': {'max_pos': 6,  'stop_mult': 0.8, 'has_reduce': False},
+        'jm2609': {'max_pos': 4,  'stop_mult': 1.8, 'has_reduce': False},
+    },
+    'V28': {
+        'lh2609': {'max_pos': 6,  'stop_mult': 1.5, 'has_reduce': True,
+                   'reduce1_atr': 2.0, 'reduce2_atr': 4.0},
+        'jm2609': {'max_pos': 4,  'stop_mult': 2.0, 'has_reduce': True,
+                   'reduce1_atr': 3.0, 'reduce2_atr': 5.0},
+    },
+    'V29': {
+        'lh2609': {'max_pos': 6,  'stop_mult': 1.5, 'has_reduce': True,
+                   'reduce1_atr': 2.0, 'reduce2_atr': 4.0},
+        'jm2609': {'max_pos': 4,  'stop_mult': 2.0, 'has_reduce': True,
+                   'reduce1_atr': 3.0, 'reduce2_atr': 5.0},
+    },
+    'V30': {
+        'lh2609': {'max_pos': 6,  'stop_mult': 1.5, 'has_reduce': True,
+                   'reduce1_atr': 2.0, 'reduce2_atr': 4.0},
+        'jm2609': {'max_pos': 4,  'stop_mult': 2.0, 'has_reduce': True,
+                   'reduce1_atr': 3.0, 'reduce2_atr': 5.0},
+    },
 }
 
 def load_state(path=None):
@@ -26,7 +51,7 @@ def load_state(path=None):
         with open(p) as f: return json.load(f)
     return {'cash': 300000, 'positions': {}, 'trades': []}
 
-def check_positions(sym_key, info, price, atr, cfg, pos_data, ticktime, ver_label):
+def check_positions(sym_key, info, price, atr, cfg, pos_data, ticktime, ver_label, ver_cfg=None):
     """检查单版本单个品种的持仓，返回告警文本或None"""
     if not pos_data:
         return None
@@ -69,13 +94,15 @@ def check_positions(sym_key, info, price, atr, cfg, pos_data, ticktime, ver_labe
                 f"距止盈 **{dist_tp:.0f}** 点\n"
                 f"→ 准备止盈出场"
             )
-        elif pnl_atr >= cfg.get('reduce1_atr', 999) and vol >= cfg.get('max_pos', 99):
+        elif (ver_cfg and ver_cfg.get('has_reduce') and
+              pnl_atr >= ver_cfg.get('reduce1_atr', 999) and vol >= ver_cfg.get('max_pos', 99)):
             cut = max(1, int(vol * 0.5))
             keep = vol - cut
+            tp_str = f" | 止盈 {tp:.0f}" if 'take_profit' in pos else ""
             alerts.append(
                 f"⚠️ [{ver_label}] **{info['name']} 减仓触发!** {ticktime}\n"
                 f"{emoji} {dir_cn} {vol}手 | +{pnl_pts:.0f}点 ({pnl_atr:.1f} ATR)\n"
-                f"实时价 **{price:.0f}** | 止盈 {tp:.0f}\n"
+                f"实时价 **{price:.0f}**{tp_str}\n"
                 f"→ 建议减 {cut}手 → 留 **{keep}手**"
             )
     return alerts
@@ -115,80 +142,95 @@ def main():
         atr = compute_atr_from_minutes(min_df, 20) if min_df is not None else price * 0.002
         if atr is None or atr <= 0: atr = price * 0.002
 
-        # ── 模型预测（用日线）──
-        signal_text = None
+        # ── 模型预测（每个版本用自己的模型）──
+        daily_df = get_daily_history(sym_key, 1200)
         ref_date = ""
-        # 优先加载校准模型
-        for model_suffix in ['_xgb_calibrated.pkl', '_xgb.pkl']:
-            mp = os.path.join(MODEL_DIR, f'{sym_key}{model_suffix}')
-            if os.path.exists(mp):
-                break
-        if os.path.exists(mp):
-            with open(mp, 'rb') as f: model = pickle.load(f)
-            daily_df = get_daily_history(sym_key, 1200)
-            if daily_df is not None and len(daily_df) >= 100:
-                ref_date = str(daily_df.iloc[-1]['date'])
-                feats = build_features(daily_df, len(daily_df)-1, 60)
-                if feats is not None:
-                    try:
-                        prob = float(model.predict_proba(feats.reshape(1, -1))[0][1])
-                        direction = 'LONG' if prob > 0.5 else 'SHORT'
-                        confidence = prob if prob > 0.5 else (1 - prob)
+        feats = None
+        if daily_df is not None and len(daily_df) >= 100:
+            ref_date = str(daily_df.iloc[-1]['date'])
+            feats = build_features(daily_df, len(daily_df)-1, 60)
 
-                        # ── 前一日比对 ──
-                        delta_str = ""
-                        try:
-                            if os.path.exists(PRED_HISTORY_FILE):
-                                with open(PRED_HISTORY_FILE) as f:
-                                    hist = json.load(f)
-                                entries = hist.get(sym_key, [])
-                                if entries and entries[-1].get('date') != ref_date:
-                                    prev_p = entries[-1].get('prob', 0)
-                                    d = prob - prev_p
-                                    arrow = '↑' if d > 0 else '↓' if d < 0 else '→'
-                                    delta_str = f"（{arrow}{abs(d):.1%}）"
-                        except: pass
+        # 版本 → 模型后缀
+        VERSION_MODEL_SUFFIX = {
+            'V25': '_xgb.pkl',
+            'V28': '_xgb.pkl',
+            'V29': '_xgb_new.pkl',
+            'V30': '_xgb_calibrated.pkl',
+        }
 
-                        if confidence > 0.58:
-                            stop_mult = cfg['stop_mult']
-                            sd = atr * stop_mult
-                            if direction == 'LONG':
-                                sp = price - sd
-                                tp = price + (price - sp) * cfg['rr']
-                            else:
-                                sp = price + sd
-                                tp = price - (sp - price) * cfg['rr']
+        version_signals = []  # [(ver_label, signal_text)]
+        for ver_label in ['V25', 'V28', 'V29', 'V30']:
+            suffix = VERSION_MODEL_SUFFIX.get(ver_label, '_xgb.pkl')
+            mp = os.path.join(MODEL_DIR, f'{sym_key}{suffix}')
+            if not os.path.exists(mp):
+                continue
+            if feats is None:
+                continue
 
-                            atr_pct = atr / price
-                            if atr_pct < 0.01: lev = 3.0
-                            elif atr_pct < 0.02: lev = 2.0
-                            elif atr_pct < 0.03: lev = 1.5
-                            elif atr_pct < 0.05: lev = 0.5
-                            else: lev = 0
-                            vol = max(1, int(lev * (cfg['max_pos'] // 2))) if lev > 0 else 0
+            try:
+                with open(mp, 'rb') as f: model = pickle.load(f)
+                prob = float(model.predict_proba(feats.reshape(1, -1))[0][1])
+                direction = 'LONG' if prob > 0.5 else 'SHORT'
+                confidence = prob if prob > 0.5 else (1 - prob)
 
-                            if vol > 0:
-                                emoji = '🟢' if direction == 'LONG' else '🔴'
-                                dir_cn = '做多' if direction == 'LONG' else '做空'
-                                mg = vol * price * cfg['multiplier'] * 0.15
-                                signal_text = (
-                                    f"{emoji} **{info['name']} {dir_cn}信号**\\n"
-                                    f"🧠 模型{'偏多' if direction=='LONG' else '偏空'} {confidence:.1%}{delta_str}（基于 {ref_date} 日线）\\n"
-                                    f"实时价 **{price:.0f}** | 止损 **{sp:.0f}** | 止盈 **{tp:.0f}**\\n"
-                                    f"{vol}手 ¥{mg/10000:.1f}万 | RR=1:{cfg['rr']:.0f}"
-                                )
-                    except: pass
+                # ── 前一日比对 ──
+                delta_str = ""
+                try:
+                    if os.path.exists(PRED_HISTORY_FILE):
+                        with open(PRED_HISTORY_FILE) as f:
+                            hist = json.load(f)
+                        entries = hist.get(sym_key, [])
+                        if entries and entries[-1].get('date') != ref_date:
+                            prev_p = entries[-1].get('prob', 0)
+                            d = prob - prev_p
+                            arrow = '↑' if d > 0 else '↓' if d < 0 else '→'
+                            delta_str = f"（{arrow}{abs(d):.1%}）"
+                except: pass
 
-        # ── 持仓检查（三个版本）──
+                if confidence > 0.58:
+                    ver_cfg = VERSION_CONFIGS.get(ver_label, {}).get(sym_key, {})
+                    stop_mult = ver_cfg.get('stop_mult', 1.5)
+                    max_pos_v = ver_cfg.get('max_pos', cfg.get('max_pos', 6))
+                    sd = atr * stop_mult
+                    if direction == 'LONG':
+                        sp = price - sd
+                        tp = price + (price - sp) * cfg['rr']
+                    else:
+                        sp = price + sd
+                        tp = price - (sp - price) * cfg['rr']
+
+                    atr_pct = atr / price
+                    if atr_pct < 0.01: lev = 3.0
+                    elif atr_pct < 0.02: lev = 2.0
+                    elif atr_pct < 0.03: lev = 1.5
+                    elif atr_pct < 0.05: lev = 0.5
+                    else: lev = 0
+                    vol = max(1, int(lev * (max_pos_v // 2))) if lev > 0 else 0
+
+                    if vol > 0:
+                        emoji = '🟢' if direction == 'LONG' else '🔴'
+                        dir_cn = '做多' if direction == 'LONG' else '做空'
+                        mg = vol * price * cfg['multiplier'] * 0.15
+                        signal_text = (
+                            f"{emoji} [{ver_label}] **{info['name']} {dir_cn}信号**\\n"
+                            f"🧠 模型{'偏多' if direction=='LONG' else '偏空'} {confidence:.1%}{delta_str}（基于 {ref_date} 日线）\\n"
+                            f"实时价 **{price:.0f}** | 止损 **{sp:.0f}** | 止盈 **{tp:.0f}**\\n"
+                            f"{vol}手 ¥{mg/10000:.1f}万 | RR=1:{cfg['rr']:.0f}"
+                        )
+                        version_signals.append((ver_label, signal_text))
+            except: pass
+
+        # ── 持仓检查（四个版本）──
         for ver_label, ver_state in states:
             ver_positions = ver_state.get('positions', {})
             pos_data = ver_positions.get(sym_key)
             if pos_data:
-                ver_alerts = check_positions(sym_key, info, price, atr, cfg, pos_data, ticktime, ver_label)
+                ver_cfg = VERSION_CONFIGS.get(ver_label, {}).get(sym_key, {})
+                ver_alerts = check_positions(sym_key, info, price, atr, cfg, pos_data, ticktime, ver_label, ver_cfg)
                 if ver_alerts:
                     alerts.extend(ver_alerts)
 
-        if signal_text: alerts.append(signal_text)
+        for _, sig in version_signals: alerts.append(sig)
 
     # ── 没事件，静默 ──
     if not alerts:

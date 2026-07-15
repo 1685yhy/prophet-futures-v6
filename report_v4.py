@@ -126,6 +126,11 @@ def lv29():
     if os.path.exists(p):return json.load(open(p))
     return{'positions':{},'cash':300000}
 
+def lv30():
+    p=SF.replace('.json','_v30.json')
+    if os.path.exists(p):return json.load(open(p))
+    return{'positions':{},'cash':300000}
+
 def eq(st,prices=None):
     """权益 = 现金 + 持仓保证金 + 浮动盈亏(逐日盯市)
     prices: {sym_key: 当前价格} 不传则只算保证金(兼容旧调用)"""
@@ -388,7 +393,13 @@ def scan():
         if os.path.exists(mp_new):
             m_new=pickle.load(open(mp_new,'rb'))
             prob_new=float(m_new.predict_proba(ft.reshape(1,-1))[0][1])
-        data[sk]={'cfg':cfg,'df':df,'price':price,'atr':atr,'prob':prob,'prob_new':prob_new}
+        # V30 用校准模型
+        mp_cal=MD+'/'+sk+'_xgb_calibrated.pkl'
+        prob_cal=prob
+        if os.path.exists(mp_cal):
+            m_cal=pickle.load(open(mp_cal,'rb'))
+            prob_cal=float(m_cal.predict_proba(ft.reshape(1,-1))[0][1])
+        data[sk]={'cfg':cfg,'df':df,'price':price,'atr':atr,'prob':prob,'prob_new':prob_new,'prob_cal':prob_cal}
     
     # ═══ V25 大块 ═══
     ele.append(md('━━━ **V25 原版** ━━━'))
@@ -437,62 +448,78 @@ def scan():
             cn=tp_cn(t.get('type','?'));reason=tp_reason(t.get('type','?'),cfg)
             ele.append(md('%s %s %d手 %+.0f → %s'%(t.get('time','')[-8:-3],cn,t.get('vol',0),t.get('pnl',0),reason)))
 
-    # ═══ V29 大块（新模型）═══
-    s29=lv29()
-    ele.append(md(''))
-    ele.append(md('━━━ **V29 新模型** ━━━'))
-    for sk in['lh2609','jm2609']:
-        if sk not in data:continue
-        d=data[sk];cfg=d['cfg'];price=d['price'];atr=d['atr'];prob=d['prob_new']
-        pos29=s29['positions'].get(sk,[])
-        if pos29:
-            has29,level29,sum29,lines29=analyze_v28(sk,cfg,d['df'],pos29,price,atr,prob)
-            if level29=='alert':act.append('🔴 V29 %s: %s'%(cfg['cn'],sum29.replace('**','')))
-            elif level29=='warn':warn.append('⚠️ V29 %s: %s'%(cfg['cn'],sum29.replace('**','')))
-            ele.append(md(sum29))
-            ele.append(md('\n'.join(lines29)))
-        else:
-            s_txt='看多'if prob>0.5 else'看空';conf=int((prob if prob>0.5 else 1-prob)*100)
-            ele.append(md('⚪ **%s** 空仓 | 模型%s %d%% | 现价%.0f'%(cfg['cn'],s_txt,conf,price)))
-    # V29 成交
-    t29=s29.get('trades',[]);t29_today=[t for t in t29 if today in str(t.get('time',''))]
-    if t29_today:
-        ele.append(md('**今日成交**'))
-        for t in t29_today[-5:]:
-            cfg=S.get(t.get('sym',''),{})
-            cn=tp_cn(t.get('type','?'));reason=tp_reason(t.get('type','?'),cfg)
-            ele.append(md('%s %s %d手 %+.0f → %s'%(t.get('time','')[-8:-3],cn,t.get('vol',0),t.get('pnl',0),reason)))
-
-    # Action banner at top
+    # ── 发送第一张卡 V25+V28 ──
     if act:
-        banner=['**⚠️ 需要操作**']+act+['']
-        for b in banner:ele.insert(0,md(b))
+        banner=['**⚠️ 需要操作**']+act+['']; [ele.insert(0,md(b)) for b in banner]
     elif warn:
-        banner=['**⚡ 关注**']+warn+['']
-        for b in banner:ele.insert(0,md(b))
+        banner=['**⚡ 关注**']+warn+['']; [ele.insert(0,md(b)) for b in banner]
     
     prices={sk:d['price']for sk,d in data.items()}
-    v25_eq=eq(sv,prices);v28_eq=eq(s28,prices);v29_eq=eq(s29,prices)
+    v25_eq=eq(sv,prices);v28_eq=eq(s28,prices)
     ele.append(md(''))
-    ele.append(md('V25 ¥%s | V28 ¥%s | V29 ¥%s | %s'%(format(int(v25_eq),','),format(int(v28_eq),','),format(int(v29_eq),','),now.strftime('%H:%M'))))
+    ele.append(md('V25 ¥%s | V28 ¥%s | %s'%(format(int(v25_eq),','),format(int(v28_eq),','),now.strftime('%H:%M'))))
+    send('扫描① %s'%now.strftime('%H:%M'),ele,'red'if act else('yellow'if warn else'blue'),bool(act))
+
+    # ── 第二张卡 V29+V30 ──
+    ele2=[];act2=[];warn2=[]
+    s29=lv29();s30=lv30()
+    for ver_lbl,s_ver,prob_key in[('V29 新模型',s29,'prob_new'),('V30 校准版',s30,'prob_cal')]:
+        ele2.append(md(''))
+        ele2.append(md('━━━ **%s** ━━━'%ver_lbl))
+        for sk in['lh2609','jm2609']:
+            if sk not in data:continue
+            d=data[sk];cfg=d['cfg'];price=d['price'];atr=d['atr'];prob=d[prob_key]
+            pos=s_ver['positions'].get(sk,[])
+            if pos:
+                has,level,summary,lines=analyze_v28(sk,cfg,d['df'],pos,price,atr,prob)
+                if level=='alert':act2.append('🔴 %s %s: %s'%(ver_lbl[:3],cfg['cn'],summary.replace('**','')))
+                elif level=='warn':warn2.append('⚠️ %s %s: %s'%(ver_lbl[:3],cfg['cn'],summary.replace('**','')))
+                ele2.append(md(summary))
+                ele2.append(md('\n'.join(lines)))
+            else:
+                s_txt='看多'if prob>0.5 else'看空';conf=int((prob if prob>0.5 else 1-prob)*100)
+                ele2.append(md('⚪ **%s** 空仓 | 模型%s %d%% | 现价%.0f'%(cfg['cn'],s_txt,conf,price)))
+        ts=s_ver.get('trades',[]);ts_t=[t for t in ts if today in str(t.get('time',''))]
+        if ts_t:
+            ele2.append(md('**%s 成交**'%ver_lbl[:3]))
+            for t in ts_t[-5:]:
+                cfg=S.get(t.get('sym',''),{})
+                cn=tp_cn(t.get('type','?'));reason=tp_reason(t.get('type','?'),cfg)
+                ele2.append(md('%s %s %d手 %+.0f → %s'%(t.get('time','')[-8:-3],cn,t.get('vol',0),t.get('pnl',0),reason)))
     
-    color='red'if act else('yellow'if warn else'blue')
-    pin=bool(act)
-    send('扫描 %s'%now.strftime('%H:%M'),ele,color,pin)
+    if act2: banner2=['**⚠️ 需要操作**']+act2+['']; [ele2.insert(0,md(b)) for b in banner2]
+    elif warn2: banner2=['**⚡ 关注**']+warn2+['']; [ele2.insert(0,md(b)) for b in banner2]
+    
+    v29_eq=eq(s29,prices);v30_eq=eq(s30,prices)
+    ele2.append(md(''))
+    ele2.append(md('V29 ¥%s | V30 ¥%s | %s'%(format(int(v29_eq),','),format(int(v30_eq),','),now.strftime('%H:%M'))))
+    send('扫描② %s'%now.strftime('%H:%M'),ele2,'red'if act2 else('yellow'if warn2 else'blue'),bool(act2))
 
 # ===== 早报 =====
 def morning():
-    sv=ls();s28=lv28();now=datetime.now();today=now.strftime('%Y-%m-%d')
+    sv=ls();s28=lv28();s29=lv29();s30=lv30()
+    now=datetime.now();today=now.strftime('%Y-%m-%d')
     wday=['周一','周二','周三','周四','周五','周六','周日'][now.weekday()]
-    ele=[md('**%s %s 盘前** | MA趋势+模型信号'%(today,wday)),hr()]
+    ele=[md('**%s %s 盘前** | 行情+模型预测'%(today,wday)),hr()]
     
-    # 预拉行情(用于eq浮盈计算)
+    # 预拉行情
     m_prices={}
     for sk in['lh2609','jm2609']:
-        df=fd(S[sk]['code'])
-        if df is not None:m_prices[sk]=float(df.iloc[-1]['close'])
+        rt=get_realtime_quote(sk)
+        if rt:m_prices[sk]=rt['price']
+        else:
+            df=fd(S[sk]['code'])
+            if df is not None:m_prices[sk]=float(df.iloc[-1]['close'])
     
-    for ver_name,ver_st,is_v28 in[('V25 原版',sv,False),('V28 动态',s28,True)]:
+    # 四个版本 + 各自模型: V25/V28用_xgb, V29用_xgb_new, V30用_xgb_calibrated
+    ver_config=[
+        ('V25 原版',sv,False,'_xgb.pkl'),
+        ('V28 动态',s28,True,'_xgb.pkl'),
+        ('V29 新模型',s29,True,'_xgb_new.pkl'),
+        ('V30 校准版',s30,True,'_xgb_calibrated.pkl'),
+    ]
+    
+    for ver_name,ver_st,is_v28,msuffix in ver_config:
         ele.append(md('━━━ **%s** ━━━'%ver_name))
         for sk in['lh2609','jm2609']:
             cfg=S[sk];df=fd(cfg['code'])
@@ -504,90 +531,435 @@ def morning():
             ma20=np.mean([float(df.iloc[i]['close'])for i in range(max(0,len(df)-20),len(df))])
             ft=bf(df,len(df)-1,60)
             if ft is None:continue
-            mp=MD+'/'+sk+'_xgb.pkl'
-            if not os.path.exists(mp):continue
-            m=pickle.load(open(mp,'rb'));prob=float(m.predict_proba(ft.reshape(1,-1))[0][1])
-            trend='📈'if price>ma5>ma20 else('📉'if price<ma5<ma20 else'↔️')
-            
-            if is_v28:
-                pos28=s28['positions'].get(sk,[])
-                if pos28:
-                    has28,level28,sum28,lines28=analyze_v28(sk,cfg,df,pos28,price,atr,prob)
-                    ele.append(md('**%s** %s %.0f(%+.1f%%) | MA5 %.0f MA20 %.0f'%(
-                        cfg['cn'],trend,price,chg*100,ma5,ma20)))
-                    ele.append(md(sum28.replace('**%s** '%cfg['cn'],'')))
-                    ele.append(md('\n'.join(lines28)))
-                else:
-                    s_txt='看多'if prob>0.5 else'看空';conf=int((prob if prob>0.5 else 1-prob)*100)
-                    ele.append(md('**%s** %s %.0f(%+.1f%%) | 空仓 | 模型%s %d%%'%(
-                        cfg['cn'],trend,price,chg*100,s_txt,conf)))
-            else:
-                pos=ver_st['positions'].get(sk)
-                has,level,summary,lines=analyze(sk,cfg,df,pos,price,atr,prob)
-                ele.append(md('**%s** %s %.0f(%+.1f%%) | MA5 %.0f MA20 %.0f'%(
-                    cfg['cn'],trend,price,chg*100,ma5,ma20)))
-                ele.append(md(summary.replace('**%s** '%cfg['cn'],'')))
-                ele.append(md('\n'.join(lines)))
-    
-    v25_eq=eq(sv,m_prices);v28_eq=eq(s28,m_prices)
-    ele.append(md('**账户** V25 ¥%s | V28 ¥%s'%(format(int(v25_eq),','),format(int(v28_eq),','))))
-    send('早报 | '+wday,ele,'blue')
-
-# ===== 晚报 =====
-def evening():
-    sv=ls();s28=lv28();now=datetime.now();today=now.strftime('%Y-%m-%d')
-    ele=[md('**%s 收盘**'%today),hr()]
-    
-    # 预拉行情(用于eq浮盈计算)
-    e_prices={}
-    for sk in['lh2609','jm2609']:
-        df=fd(S[sk]['code'])
-        if df is not None:e_prices[sk]=float(df.iloc[-1]['close'])
-    
-    for ver_name,ver_st,is_v28 in[('V25 原版',sv,False),('V28 动态',s28,True)]:
-        ele.append(md('━━━ **%s** ━━━'%ver_name))
-        for sk in['lh2609','jm2609']:
-            cfg=S[sk];df=fd(cfg['code'])
-            if df is None:continue
-            price=float(df.iloc[-1]['close']);prev=float(df.iloc[-2]['close'])if len(df)>1 else price
-            chg=(price-prev)/prev
-            av=[abs(float(df.iloc[i]['high'])-float(df.iloc[i]['low']))for i in range(max(0,len(df)-20),len(df))]
-            atr=np.mean(av);ma5=np.mean([float(df.iloc[i]['close'])for i in range(max(0,len(df)-5),len(df))])
-            ma20=np.mean([float(df.iloc[i]['close'])for i in range(max(0,len(df)-20),len(df))])
-            ft=bf(df,len(df)-1,60)
-            if ft is None:continue
-            mp=MD+'/'+sk+'_xgb.pkl'
+            mp=MD+'/'+sk+msuffix
             if not os.path.exists(mp):continue
             m=pickle.load(open(mp,'rb'));prob=float(m.predict_proba(ft.reshape(1,-1))[0][1])
             trend='📈'if price>ma5>ma20 else('📉'if price<ma5<ma20 else'↔️')
             signal='看多'if prob>0.5 else'看空';conf=int((prob if prob>0.5 else 1-prob)*100)
             
+            # 模型预测行
+            ele.append(md('**%s** %s %.0f(%+.1f%%) | MA5 %.0f MA20 %.0f | 模型%s %d%%'%(
+                cfg['cn'],trend,price,chg*100,ma5,ma20,signal,conf)))
+            
+            # 持仓/明细
+            pos=ver_st['positions'].get(sk,[] if is_v28 else None)
             if is_v28:
-                pos28=s28['positions'].get(sk,[])
-                if pos28:
-                    has28,level28,sum28,lines28=analyze_v28(sk,cfg,df,pos28,price,atr,prob)
-                    ele.append(md('**%s** %s %.0f(%+.1f%%) | 模型%s %d%%'%(
-                        cfg['cn'],trend,price,chg*100,signal,conf)))
+                if pos:
+                    has28,level28,sum28,lines28=analyze_v28(sk,cfg,df,pos,price,atr,prob)
                     ele.append(md(sum28.replace('**%s** '%cfg['cn'],'')))
                     ele.append(md('\n'.join(lines28)))
                 else:
-                    ele.append(md('**%s** %s %.0f(%+.1f%%) | 空仓 | 模型%s %d%%'%(
-                        cfg['cn'],trend,price,chg*100,signal,conf)))
+                    ele.append(md('⚪ 空仓'))
             else:
-                pos=ver_st['positions'].get(sk)
-                has,level,summary,lines=analyze(sk,cfg,df,pos,price,atr,prob)
-                ele.append(md('**%s** %s %.0f(%+.1f%%) | MA5 %.0f MA20 %.0f | 模型%s %d%%'%(
-                    cfg['cn'],trend,price,chg*100,ma5,ma20,signal,conf)))
-                ele.append(md(summary.replace('**%s** '%cfg['cn'],'')))
-                ele.append(md('\n'.join(lines)))
+                if pos:
+                    has,level,summary,lines=analyze(sk,cfg,df,pos,price,atr,prob)
+                    ele.append(md(summary.replace('**%s** '%cfg['cn'],'')))
+                    ele.append(md('\n'.join(lines)))
+                else:
+                    ele.append(md('⚪ 空仓'))
+    
+    v25_eq=eq(sv,m_prices);v28_eq=eq(s28,m_prices)
+    v29_eq=eq(s29,m_prices);v30_eq=eq(s30,m_prices)
+    ele.append(md('**账户** V25 ¥%s | V28 ¥%s | V29 ¥%s | V30 ¥%s'%(
+        format(int(v25_eq),','),format(int(v28_eq),','),
+        format(int(v29_eq),','),format(int(v30_eq),','))))
+    ok=send('早报 | '+wday,ele,'blue')
+    print('早报发送:','✅成功'if ok else'❌失败')
+
+# ===== 晚报 =====
+def evening():
+    sv=ls();s28=lv28();s29=lv29();s30=lv30()
+    now=datetime.now();today=now.strftime('%Y-%m-%d')
+    ele=[md('**%s 收盘**'%today),hr()]
+    
+    e_prices={}
+    for sk in['lh2609','jm2609']:
+        rt=get_realtime_quote(sk)
+        if rt:e_prices[sk]=rt['price']
+        else:
+            df=fd(S[sk]['code'])
+            if df is not None:e_prices[sk]=float(df.iloc[-1]['close'])
+    
+    ver_config=[
+        ('V25 原版',sv,False,'_xgb.pkl'),
+        ('V28 动态',s28,True,'_xgb.pkl'),
+        ('V29 新模型',s29,True,'_xgb_new.pkl'),
+        ('V30 校准版',s30,True,'_xgb_calibrated.pkl'),
+    ]
+    
+    for ver_name,ver_st,is_v28,msuffix in ver_config:
+        ele.append(md('━━━ **%s** ━━━'%ver_name))
+        for sk in['lh2609','jm2609']:
+            cfg=S[sk];df=fd(cfg['code'])
+            if df is None:continue
+            price=float(df.iloc[-1]['close']);prev=float(df.iloc[-2]['close'])if len(df)>1 else price
+            chg=(price-prev)/prev
+            av=[abs(float(df.iloc[i]['high'])-float(df.iloc[i]['low']))for i in range(max(0,len(df)-20),len(df))]
+            atr=np.mean(av);ma5=np.mean([float(df.iloc[i]['close'])for i in range(max(0,len(df)-5),len(df))])
+            ma20=np.mean([float(df.iloc[i]['close'])for i in range(max(0,len(df)-20),len(df))])
+            ft=bf(df,len(df)-1,60)
+            if ft is None:continue
+            mp=MD+'/'+sk+msuffix
+            if not os.path.exists(mp):continue
+            m=pickle.load(open(mp,'rb'));prob=float(m.predict_proba(ft.reshape(1,-1))[0][1])
+            trend='📈'if price>ma5>ma20 else('📉'if price<ma5<ma20 else'↔️')
+            signal='看多'if prob>0.5 else'看空';conf=int((prob if prob>0.5 else 1-prob)*100)
+            
+            ele.append(md('**%s** %s %.0f(%+.1f%%) | MA5 %.0f MA20 %.0f | 模型%s %d%%'%(
+                cfg['cn'],trend,price,chg*100,ma5,ma20,signal,conf)))
+            
+            pos=ver_st['positions'].get(sk,[] if is_v28 else None)
+            if is_v28:
+                if pos:
+                    has28,level28,sum28,lines28=analyze_v28(sk,cfg,df,pos,price,atr,prob)
+                    ele.append(md(sum28.replace('**%s** '%cfg['cn'],'')))
+                    ele.append(md('\n'.join(lines28)))
+                else:
+                    ele.append(md('⚪ 空仓'))
+            else:
+                if pos:
+                    has,level,summary,lines=analyze(sk,cfg,df,pos,price,atr,prob)
+                    ele.append(md(summary.replace('**%s** '%cfg['cn'],'')))
+                    ele.append(md('\n'.join(lines)))
+                else:
+                    ele.append(md('⚪ 空仓'))
     
     v25_eq=eq(sv,e_prices);v28_eq=eq(s28,e_prices)
-    ele.append(md('**账户** V25 ¥%s | V28 ¥%s'%(format(int(v25_eq),','),format(int(v28_eq),','))))
+    v29_eq=eq(s29,e_prices);v30_eq=eq(s30,e_prices)
+    ele.append(md('**账户** V25 ¥%s | V28 ¥%s | V29 ¥%s | V30 ¥%s'%(
+        format(int(v25_eq),','),format(int(v28_eq),','),
+        format(int(v29_eq),','),format(int(v30_eq),','))))
     send('晚报 | %s'%today,ele,'blue')
 
 def midday():
     morning()
 
+# ===== 周报 =====
+def _eq_trend(eq_week):
+    """从权益历史生成文字趋势描述"""
+    if len(eq_week)<3:return '数据不足'
+    vals=[e['equity']for e in eq_week]
+    start=vals[0];end=vals[-1];peak=max(vals);trough=min(vals)
+    # 找拐点: 上涨/下跌段
+    segs=[];cur_dir=None;cur_start=0
+    for i in range(1,len(vals)):
+        d='up'if vals[i]>vals[i-1]*1.001 else('down'if vals[i]<vals[i-1]*0.999 else'flat')
+        if d!=cur_dir:
+            if cur_dir and cur_dir!='flat':
+                segs.append((cur_dir,i-cur_start))
+            cur_dir=d;cur_start=i
+    if cur_dir and cur_dir!='flat':segs.append((cur_dir,len(vals)-cur_start))
+    if not segs:return '权益基本持平'
+    days=['一','二','三','四','五']
+    desc=[];pos=0
+    for d,count in segs:
+        end_pos=pos+count
+        ds=days[min(pos,len(days)-1)] if pos<len(days)else''
+        de=days[min(end_pos-1,len(days)-1)]if end_pos-1<len(days)else''
+        if ds==de:label='周%s'%ds
+        else:label='周%s→%s'%(ds,de)
+        if d=='up':desc.append('%s📈'%label)
+        else:desc.append('%s📉'%label)
+        pos=end_pos
+    chg=(end-start)/start*100
+    return '%s | 波动%.1f%%'%(','.join(desc),chg)
+
+def _weekly_comment(ver_name,net,pct,week_trades,eq_week,model_driven,rule_driven,win_rate):
+    """生成版本要点点评"""
+    parts=[]
+    if net>0:parts.append('✅盈利')
+    elif net<0:parts.append('❌亏损')
+    else:parts.append('➖持平')
+    if week_trades:
+        stops=sum(1 for t in week_trades if tp_cn(t.get('type','')or'')=='止损')
+        if stops>=2:parts.append('止损%d次偏多'%stops)
+        if win_rate>=60:parts.append('胜率%.0f%%不错'%win_rate)
+        elif win_rate<40:parts.append('胜率%.0f%%偏低'%win_rate)
+        if model_driven>rule_driven:parts.append('模型主导')
+        else:parts.append('规则触发多')
+    else:parts.append('本周无交易')
+    return ' | '.join(parts)
+
+def _eval_models(week_start,week_end):
+    """评估各模型本周方向准确率：预测涨跌 vs 实际次日涨跌"""
+    # 模型列表: (标签, 模型文件后缀, 使用的版本)
+    model_list=[
+        ('V25/V28','_xgb.pkl'),
+        ('V29','_xgb_new.pkl'),
+        ('V30','_xgb_calibrated.pkl'),
+    ]
+    results=[]
+    for sk in['lh2609','jm2609']:
+        cfg=S[sk];df=fd(cfg['code'])
+        if df is None or len(df)<80:continue
+        # 筛选本周的日线bar
+        df['dt']=pd.to_datetime(df['date'])
+        week_df=df[(df['dt']>=week_start)&(df['dt']<=week_end)].reset_index(drop=True)
+        if len(week_df)<3:continue
+        
+        for mlbl,msuffix in model_list:
+            mp=MD+'/'+sk+msuffix
+            if not os.path.exists(mp):continue
+            m=pickle.load(open(mp,'rb'))
+            
+            correct=0;total=0;bull_returns=[];bear_returns=[];bullish_count=0
+            for i in range(len(week_df)-1):
+                # 在整个df中定位这个bar的索引
+                full_idx=df[df['dt']==week_df.iloc[i]['dt']].index
+                if len(full_idx)==0:continue
+                idx=full_idx[0]
+                if idx<65:continue
+                ft=bf(df,idx,60)
+                if ft is None:continue
+                try:
+                    prob=float(m.predict_proba(ft.reshape(1,-1))[0][1])
+                except:continue
+                # 实际次日涨跌
+                next_ret=float((df.iloc[idx+1]['close']-df.iloc[idx]['close'])/df.iloc[idx]['close'])
+                pred_up=prob>0.5
+                actual_up=next_ret>0
+                if pred_up==actual_up:correct+=1
+                total+=1
+                if pred_up:
+                    bull_returns.append(next_ret);bullish_count+=1
+                else:
+                    bear_returns.append(next_ret)
+            
+            if total==0:continue
+            bull_mean=np.mean(bull_returns)if bull_returns else 0
+            bear_mean=np.mean(bear_returns)if bear_returns else 0
+            results.append({
+                'model':mlbl,'symbol':cfg['cn'],
+                'accuracy':correct/total*100,
+                'bull_mean':bull_mean,'bear_mean':bear_mean,
+                'bullish_pct':bullish_count/total*100,
+                'total':total,
+            })
+    return results
+
+def weekly_report():
+    """生成四版本周报：卡1总览 + 卡2明细"""
+    sv=ls();s28=lv28();s29=lv29();s30=lv30()
+    now=datetime.now()
+    today=now.date()
+    days_since_monday=today.weekday()
+    last_monday=today-timedelta(days=days_since_monday+7)
+    last_friday=last_monday+timedelta(days=4)
+    week_label='%s~%s'%(last_monday.strftime('%m/%d'),last_friday.strftime('%m/%d'))
+    week_start=last_monday.strftime('%Y-%m-%d')
+    week_end=last_friday.strftime('%Y-%m-%d')
+    
+    versions=[
+        ('V25 原版',sv),
+        ('V28 动态',s28),
+        ('V29 新模型',s29),
+        ('V30 校准版',s30),
+    ]
+    
+    # 预拉行情
+    prices={}
+    for sk in['lh2609','jm2609']:
+        rt=get_realtime_quote(sk)
+        if rt:prices[sk]=rt['price']
+        else:
+            df=fd(S[sk]['code'])
+            if df is not None:prices[sk]=float(df.iloc[-1]['close'])
+    
+    # ── 收集所有版本数据 ──
+    all_data=[]
+    for ver_name,st in versions:
+        eq_hist=st.get('equity_history',[])
+        trades_all=st.get('trades',[])
+        week_trades=[t for t in trades_all if _in_week(t.get('time','')or t.get('exit_time','')or'',week_start,week_end)]
+        
+        # 权益
+        eq_week=[e for e in eq_hist if week_start<=e['time'][:10]<=week_end]
+        if eq_week:
+            eq_start=eq_week[0]['equity'];eq_end=eq_week[-1]['equity']
+            eq_high=max(e['equity']for e in eq_week)
+            eq_low=min(e['equity']for e in eq_week)
+        else:
+            start_equity=300000
+            for t in trades_all:
+                t_time=t.get('time','')or t.get('exit_time','')
+                if t_time and t_time[:10]<week_start:
+                    pnl=t.get('pnl',0)or t.get('pnl_amount',0)
+                    start_equity+=pnl
+            end_equity=eq(st,prices)
+            eq_start=start_equity;eq_end=end_equity
+            eq_high=max(start_equity,end_equity);eq_low=min(start_equity,end_equity)
+        
+        net=eq_end-eq_start;pct=net/eq_start*100 if eq_start else 0
+        
+        # 胜率
+        wins=sum(1 for t in week_trades if(t.get('pnl',0)or t.get('pnl_amount',0))>0)
+        win_rate=wins/len(week_trades)*100 if week_trades else 0
+        
+        # 驱动统计
+        model_driven=0;rule_driven=0
+        for t in week_trades:
+            tt=tp_cn(t.get('type','')or('TP'if t.get('exit_type')=='TP'else'?'))
+            if tt in('止损','TP','止盈'):rule_driven+=1
+            else:model_driven+=1
+        
+        # 趋势描述
+        trend_desc=_eq_trend(eq_week)if eq_week else'无历史数据'
+        
+        # 要点
+        comment=_weekly_comment(ver_name,net,pct,week_trades,eq_week,model_driven,rule_driven,win_rate)
+        
+        all_data.append({
+            'ver':ver_name,'st':st,'eq_start':eq_start,'eq_end':eq_end,
+            'eq_high':eq_high,'eq_low':eq_low,'net':net,'pct':pct,
+            'week_trades':week_trades,'eq_week':eq_week,
+            'model':model_driven,'rule':rule_driven,
+            'win_rate':win_rate,'wins':wins,
+            'trend':trend_desc,'comment':comment,
+        })
+    
+    # ═══════════════ 卡1: 总览 ═══════════════
+    ele1=[md('**📊 周报 %s**'%week_label),md('')]
+    
+    # 四版本对比总表
+    rows=['| 版本 | 周初 | 周末 | 净盈亏 | 收益率 | 胜率 | 要点 |']
+    rows.append('|------|------|------|------|------|------|------|')
+    for d in all_data:
+        net_sign='+'if d['net']>=0 else''
+        rows.append('| **%s** | ¥%s | ¥%s | %s¥%s | %+.1f%% | %d/%d(%.0f%%) | %s |'%(
+            d['ver'],format(int(d['eq_start']/10000),',')+'万',format(int(d['eq_end']/10000),',')+'万',
+            net_sign,format(int(d['net']),','),d['pct'],
+            d['wins'],len(d['week_trades']),d['win_rate'],
+            d['comment']))
+    ele1.append(md('\n'.join(rows)))
+    ele1.append(md(''))
+    
+    # 排名
+    ranked=sorted(all_data,key=lambda x:x['pct'],reverse=True)
+    ranks=[]
+    for i,d in enumerate(ranked):
+        icon='🥇'if i==0 else('🥈'if i==1 else('🥉'if i==2 else'  %d.'%(i+1)))
+        ranks.append('%s%s %+.1f%%'%(icon,d['ver'][:3],d['pct']))
+    ele1.append(md('**排名** %s'%' | '.join(ranks)))
+    ele1.append(md(''))
+    
+    # 各版本趋势
+    ele1.append(md('**权益趋势**'))
+    for d in all_data:
+        arrow='📈'if d['net']>0 else('📉'if d['net']<0 else'➖')
+        ele1.append(md('%s **%s** ¥%s→¥%s %+.1f%% | %s'%(
+            arrow,d['ver'],
+            format(int(d['eq_start']),','),format(int(d['eq_end']),','),
+            d['pct'],d['trend'])))
+    ele1.append(md(''))
+    
+    # 模型准确率
+    ele1.append(md('**模型准确率（本周日线）**'))
+    ele1.append(md('> 计算方法：每日收盘后用当日特征预测次日涨跌方向，对比次日实际涨跌。准确率=方向正确的天数/总天数。看多/看空均收益=按信号方向模拟持仓的次日平均收益率。'))
+    acc_data=_eval_models(week_start,week_end)
+    if acc_data:
+        acc_rows=['| 模型 | 品种 | 方向准确率 | 看多均收益 | 看空均收益 | 信号偏好 |']
+        acc_rows.append('|------|------|------|------|------|------|')
+        for a in acc_data:
+            bias='偏多'if a['bullish_pct']>60 else('偏空'if a['bullish_pct']<40 else'均衡')
+            acc_rows.append('| %s | %s | %.0f%% | %+.2f%% | %+.2f%% | %s(%.0f%%) |'%(
+                a['model'],a['symbol'],a['accuracy'],
+                a['bull_mean']*100,a['bear_mean']*100,
+                bias,a['bullish_pct']))
+        ele1.append(md('\n'.join(acc_rows)))
+        # 一句话解读
+        best_acc=max(acc_data,key=lambda x:x['accuracy'])
+        worst_acc=min(acc_data,key=lambda x:x['accuracy'])
+        ele1.append(md('最佳: %s-%s %.0f%% | 最差: %s-%s %.0f%%'%(
+            best_acc['model'],best_acc['symbol'],best_acc['accuracy'],
+            worst_acc['model'],worst_acc['symbol'],worst_acc['accuracy'])))
+    else:
+        ele1.append(md('数据不足，无法评估'))
+    ele1.append(md(''))
+    
+    # 当前持仓快照
+    ele1.append(md('**周末持仓**'))
+    pos_rows=['| 版本 | 品种 | 方向 | 手数 | 均价 | 浮盈 |']
+    pos_rows.append('|------|------|------|------|------|------|')
+    for d in all_data:
+        pos=d['st'].get('positions',{})
+        if not pos:
+            pos_rows.append('| %s | — | 空仓 | — | — | — |'%d['ver'])
+        else:
+            first=True
+            for sk,pl in pos.items():
+                cfg=S.get(sk,{})
+                if isinstance(pl,list):
+                    tv=sum(p['vol']for p in pl);dr=pl[0]['dir']
+                    ae=sum(p['entry']*p['vol']for p in pl)/tv
+                    cur=prices.get(sk,ae)
+                    pp=(cur-ae)*tv*cfg['mp']if dr=='LONG'else(ae-cur)*tv*cfg['mp']
+                    ps='+'if pp>=0 else''
+                    dir_cn='多'if dr=='LONG'else'空'
+                    lbl=d['ver']if first else''
+                    pos_rows.append('| %s | %s | %s | %d | %.0f | %s%.1f万 |'%(
+                        lbl,cfg['cn'],dir_cn,tv,ae,ps,pp/10000))
+                else:
+                    cur=prices.get(sk,pl['entry'])
+                    pp=(cur-pl['entry'])*pl['vol']*cfg['mp']if pl['dir']=='LONG'else(pl['entry']-cur)*pl['vol']*cfg['mp']
+                    ps='+'if pp>=0 else''
+                    dir_cn='多'if pl['dir']=='LONG'else'空'
+                    lbl=d['ver']if first else''
+                    pos_rows.append('| %s | %s | %s | %d | %.0f | %s%.1f万 |'%(
+                        lbl,cfg['cn'],dir_cn,pl['vol'],pl['entry'],ps,pp/10000))
+                first=False
+    ele1.append(md('\n'.join(pos_rows)))
+    ele1.append(md(''))
+    ele1.append(md('生成 %s | 明细见下一张卡'%now.strftime('%m/%d %H:%M')))
+    
+    send('📊 周报总览 | %s'%week_label,ele1,'blue')
+    
+    # ═══════════════ 卡2: 明细 ═══════════════
+    ele2=[md('**📋 周报明细 | %s**'%week_label),md('')]
+    
+    for d in all_data:
+        week_trades=d['week_trades']
+        ele2.append(md('━━━ **%s** ━━━'%d['ver']))
+        
+        # 统计行
+        ele2.append(md('权益 %+.1f%% | 交易%d笔 | 胜率%.0f%%(%d/%d) | 🧠%d ⚙️%d | %s'%(
+            d['pct'],len(week_trades),d['win_rate'],d['wins'],len(week_trades),
+            d['model'],d['rule'],d['trend'])))
+        
+        if not week_trades:
+            ele2.append(md('本周无交易'))
+        else:
+            rows=['| 时间 | 品种 | 操作 | 盈亏 | 原因 |']
+            rows.append('|------|------|------|------|------|')
+            for t in week_trades:
+                t_time=(t.get('time','')or t.get('exit_time','')or'')[:16].replace('T',' ')
+                if len(t_time)>11:t_time=t_time[5:]  # MM-DD HH:MM
+                t_sym=t.get('sym','?');cfg=S.get(t_sym,{})
+                cn=cfg.get('cn',t_sym)
+                t_type=tp_cn(t.get('type','')or('TP'if t.get('exit_type')=='TP'else'?'))
+                t_pnl=t.get('pnl',0)or t.get('pnl_amount',0)
+                pnl_str='%+.0f'%t_pnl
+                # 原因
+                reason=tp_reason(t.get('type','')or('TP'if t.get('exit_type')=='TP'else'?'),cfg)
+                if len(reason)>20:reason=reason[:18]+'…'
+                rows.append('| %s | %s | %s | %s | %s |'%(t_time,cn,t_type,pnl_str,reason))
+            ele2.append(md('\n'.join(rows)))
+        
+        # 模型对齐
+        total_t=len(week_trades)
+        if total_t>0:
+            ele2.append(md('**模型对齐** 🧠模型%d笔(%.0f%%) ⚙️规则%d笔(%.0f%%)'%(
+                d['model'],d['model']/total_t*100,d['rule'],d['rule']/total_t*100)))
+        ele2.append(md(''))
+    
+    ele2.append(md('生成 %s'%now.strftime('%m/%d %H:%M')))
+    send('📋 周报明细 | %s'%week_label,ele2,'blue')
+
+def _in_week(ts,ws,we):
+    if not ts:return False
+    d=ts[:10]
+    try:return ws<=d<=we
+    except:return False
+
 if __name__=='__main__':
     mode=sys.argv[1]if len(sys.argv)>1 else'scan'
-    {'morning':morning,'midday':midday,'evening':evening,'scan':scan}[mode]()
+    {'morning':morning,'midday':midday,'evening':evening,'scan':scan,'weekly':weekly_report}[mode]()

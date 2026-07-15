@@ -315,6 +315,16 @@ def check_v26_exit(sym_key, pos, models, df, now):
 # ===== MAIN =====
 def main():
     global running
+    # PID锁
+    import fcntl
+    lock_fd = open('/tmp/paper_v25.lock', 'w')
+    try:
+        fcntl.flock(lock_fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        lock_fd.write(str(os.getpid())); lock_fd.flush()
+    except (IOError, OSError):
+        print('V25已在运行,退出')
+        sys.exit(0)
+    
     print("=" * 60)
     print("  Prophet v26 — Dynamic Stop/Take-Profit Engine")
     print(f"  Capital: ¥{CAPITAL:,}  |  {datetime.now().strftime('%Y-%m-%d %H:%M')}")
@@ -548,7 +558,7 @@ def main():
             # Feishu alert
             try:
                 send_alert(
-                    f"{emoji} 开仓 [V26] | {sym_key}",
+                    f"{emoji} 开仓 [V25] | {sym_key}",
                     f"{dir_cn} {pos_size}手 @ {price:.0f}\n"
                     f"硬止损: {entry_stop:.0f}\n"
                     f"动态管理: 移动{cfg['trail_atr']}ATR | 保本{cfg['be_atr']}ATR\n"
