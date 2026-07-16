@@ -8,6 +8,7 @@ import sys, os, time, json, signal
 import numpy as np, pandas as pd
 from datetime import datetime, timedelta
 import akshare as ak
+from trade_logger import log_trade
 import xgboost as xgb
 import pickle
 try:
@@ -444,13 +445,17 @@ def main():
                       f"@{exit_price:.0f} PnL={pnl_amount:+,.0f} ({pnl_pct:+.2%}) "
                       f"余额=¥{state['cash']:,.0f}")
                 log_event(f"{reason} {sym_key} {d} {vol}手 @{entry}→{exit_price:.0f} PnL={pnl_amount:+,.0f}")
+                reason_cn = {'MODEL': '模型逆转', 'TP': '止盈', 'TRAIL': '移动止损', 
+                             'STOP': '止损', 'HARD': '硬止损'}.get(reason, reason)
+                reason_bi = '%s|%s' % (reason_cn, reason)
+                log_trade('V31', sym_key, 'CLOSE', d, entry, exit_price, vol, pnl_amount,
+                          reason_bi, '反转计数=%d/%d' % (pos.get('_rev_count', 0), cfg['confirm_bars']),
+                          state['cash'], state['cash'])
                 del state['positions'][sym_key]
                 save_state(state)
                 
                 # Feishu alert
                 try:
-                    reason_cn = {'MODEL': '模型逆转', 'TP': '止盈', 'TRAIL': '移动止损', 
-                                 'STOP': '止损', 'HARD': '硬止损'}.get(reason, reason)
                     pnl_sign = '+' if pnl_amount > 0 else ''
                     color = 'green' if pnl_amount > 0 else 'red'
                     send_alert(
@@ -548,12 +553,15 @@ def main():
                 'cost_pct': cost_pct,
                 '_rev_count': 0, 'bar_count': 0,
             }
-            state['cash'] -= margin_used * cost_pct
+            state['cash'] -= margin_used
             traded_today.add(sym_key)
             save_state(state)
             print(f"    ✅ 开仓 [V31动态] 硬止损={entry_stop:.0f} 参考目标={display_tp:.0f}")
             
             log_event(f"OPEN {sym_key} {signal_dir} {pos_size}手 @{price:.0f} HARD_STOP={entry_stop:.0f}")
+            log_trade('V31', sym_key, 'OPEN', signal_dir, price, 0, pos_size, 0,
+                      '模型信号|SIGNAL', '概率=%.3f_置信=%.2f_止损=%.0f' % (prob, confidence, entry_stop),
+                      state['cash'], state['cash'])
             
             # Feishu alert
             try:

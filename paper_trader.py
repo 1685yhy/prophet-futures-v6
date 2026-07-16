@@ -548,7 +548,7 @@ def main():
                 'cost_pct': cost_pct,
                 '_rev_count': 0, 'bar_count': 0,
             }
-            state['cash'] -= margin_used * cost_pct
+            state['cash'] -= margin_used
             traded_today.add(sym_key)
             save_state(state)
             print(f"    ✅ 开仓 [V26动态] 硬止损={entry_stop:.0f} 参考目标={display_tp:.0f}")

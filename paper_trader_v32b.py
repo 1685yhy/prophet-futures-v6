@@ -1,14 +1,15 @@
 #!/usr/bin/env python3
 """
-Prophet Futures — Paper Trading Engine V32b (保守)
+Prophet Futures — Paper Trading Engine V28
 模型驱动动态交易: 持有/加仓/减仓/反手
-V32b = V25 ATR基底 + 模型动态决策
-独立状态文件 paper_state_v32.json
+V32b = V25 ATR基底 + 模型动态决策 + 模型动态决策
+独立状态文件 paper_state_v32b.json
 """
 import sys, os, time, json, signal, pickle
 import numpy as np, pandas as pd
 from datetime import datetime, timedelta
 import akshare as ak
+from trade_logger import log_trade
 
 try:
     from feishu_send import send_alert, send_scan
@@ -21,35 +22,22 @@ SYMBOLS = {
     'lh2609': {
         'code': 'LH0', 'name': 'LH', 'cost': 0.0006, 'multiplier': 16,
         'max_pos': 3, 'max_total': 6,
-        'atr_stop': 0.5,  # V32b 紧止损
-        # V32b uses 5.0,         # V32b 宽止盈
-        'add_conf': 0.70,  # V32b 更难加仓
+        'atr_stop': 0.5,  # V25基底 ATR止损倍数
+        'rr': 5.0,         # 止盈风险比
+        'add_conf': 0.70,  # 加仓: 置信度>65%
         'add_atr': 2.0,    # 加仓: 浮盈>2ATR
         'reduce_conf': 0.45,  # V32b 更早减仓
         'reverse_conf': 0.25,  # V32b 极难反手
         'trail_atr': 1.5,     # V32b 更早追踪
         'be_atr': 0.8,        # V32b 更早保本
-        'min_hold': 3,        # 最小持仓bar
-    },
-    'jm2609': {
-        'code': 'JM0', 'name': 'JM', 'cost': 0.0011, 'multiplier': 60,
-        'max_pos': 2, 'max_total': 4,
-        'atr_stop': 0.5,
-        # V32b uses 5.0,
-        'add_conf': 0.70,
-        'add_atr': 2.5,
-        'reduce_conf': 0.45,
-        'reverse_conf': 0.25,  # V32b 极难反手
-        'trail_atr': 2.0,
-        'be_atr': 1.5,
-        'min_hold': 5,
+        'min_hold': 5,  # 最小持仓bar        # 最小持仓bar
     },
 }
 
 CAPITAL = 300000
 MODEL_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'models')
 STATE_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'paper_state_v32b.json')
-TRADE_LOG = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'trade_journal_v32.log')
+TRADE_LOG = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'trade_journal_v32b.log')
 BAR_INTERVAL = 60  # 1 min scan
 
 running = True
@@ -141,21 +129,19 @@ def main():
         fcntl.flock(lock_fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
         lock_fd.write(str(os.getpid())); lock_fd.flush()
     except (IOError, OSError):
-        print('V32b已在运行,退出')
+        print('V28已在运行,退出')
         sys.exit(0)
     
     print('=' * 60)
-    print('  Prophet V28 — 动态加仓/减仓/反手引擎')
+    print('  Prophet V32b — 动态加仓/减仓/反手引擎')
     print('  Capital: ¥%s  |  %s' % (format(CAPITAL, ','), datetime.now().strftime('%Y-%m-%d %H:%M')))
     print('  LH: ATR×0.5 加仓>70%&3ATR 反手<25% | JM: ATR×0.5 加仓>70%&3ATR 反手<25%')
     print('=' * 60)
 
     # Load models
     models = {}
-# V32b uses newly trained model from v5 backtest
-    MODEL_MAP = {'lh2609': 'v31_xgb.pkl', 'jm2609': 'v31_jm_xgb.pkl'}
     for sym_key in SYMBOLS:
-        mp = os.path.join(MODEL_DIR, MODEL_MAP[sym_key])
+        mp = os.path.join(MODEL_DIR, sym_key+'_xgb.pkl')
         if os.path.exists(mp):
             with open(mp, 'rb') as f: models[sym_key] = pickle.load(f)
             print('  %s: loaded' % sym_key)
@@ -174,7 +160,7 @@ def main():
                 print('  %s: %s %d手 @ %s' % (k, v['dir'], v['vol'], v['entry']))
 
     print('\n' + '='*60)
-    print('  V32b 引擎就绪 (独立状态: paper_state_v32.json)')
+    print('  V32b 引擎就绪 (独立状态: paper_state_v32b.json)')
     print('='*60 + '\n')
 
     traded_today = set()
@@ -210,7 +196,7 @@ def main():
             if df is not None and len(df) >= 100:
                 daily_dfs[sym_key] = df
 
-        # ===== V28 管理现有持仓 =====
+        # ===== V32b 管理现有持仓 =====
         positions = state['positions']
         for sym_key in list(positions.keys()):
             pos_list = positions[sym_key]  # list of sub-positions
@@ -266,7 +252,10 @@ def main():
                         emoji = '🟢' if pnl>0 else '🔴'
                         print('  %s [V32b-STOP] %s %s %d手 @%.0f→%.0f PnL=%+.0f 余额=¥%s' % (
                             emoji, sym_key, d, vol, entry, ep, pnl, format(int(state['cash']), ',')))
-                        log_event('V28 STOP %s %s %d手 @%s→%s PnL=%+.0f' % (sym_key, d, vol, entry, ep, pnl))
+                        log_event('V32b STOP %s %s %d手 @%s→%s PnL=%+.0f' % (sym_key, d, vol, entry, ep, pnl))
+                        log_trade('V32b', sym_key, 'CLOSE', d, entry, ep, vol, pnl,
+                                  '止损|STOP', '有效止损=%.1f_硬止损=%.1f_追踪=%.1f_概率=%.3f' % (eff_stop, hard_stop, trail, prob),
+                                  state['cash'], state['cash'])
                         try: send_alert('%s [V32b] 止损 | %s' % (emoji, sym_key),
                             '%s %d手 @%s→%s\nPnL=%+.0f\n余额 ¥%s' % (d,vol,entry,ep,pnl,format(int(state['cash']),',')),
                             color='red' if pnl<0 else 'green', pin=True)
@@ -278,7 +267,10 @@ def main():
                                  'pnl': pnl, 'type': 'REVERSE', 'time': now.isoformat()}
                         state.setdefault('trades', []).append(trade)
                         print('  🔴 [V32b-REV] %s %s→反手平仓 @%.0f PnL=%+.0f' % (sym_key, d, price, pnl))
-                        log_event('V28 REV %s %s %d手 @%s→%s PnL=%+.0f' % (sym_key, d, vol, entry, price, pnl))
+                        log_event('V32b REV %s %s %d手 @%s→%s PnL=%+.0f' % (sym_key, d, vol, entry, price, pnl))
+                        log_trade('V32b', sym_key, 'CLOSE', d, entry, price, vol, pnl,
+                                  '反手|REVERSE', '概率=%.3f<%.2f_反手阈值' % (prob, cfg['reverse_conf']),
+                                  state['cash'], state['cash'])
                         try: send_alert('🔴 [V32b] 反手 | %s' % sym_key,
                             '平%s %d手 @%s→%.0f\nPnL=%+.0f' % (d,vol,entry,price,pnl), color='red', pin=True)
                         except: pass
@@ -291,7 +283,10 @@ def main():
                                  'pnl': pnl, 'type': 'REDUCE', 'time': now.isoformat()}
                         state.setdefault('trades', []).append(trade)
                         print('  🟡 [V32b-RED] %s 减仓 %d→%d手 @%.0f PnL=%+.0f' % (sym_key, vol, vol-cut, price, pnl))
-                        log_event('V28 RED %s %s %d→%d手 @%.0f PnL=%+.0f' % (sym_key, d, vol, vol-cut, price, pnl))
+                        log_event('V32b RED %s %s %d→%d手 @%.0f PnL=%+.0f' % (sym_key, d, vol, vol-cut, price, pnl))
+                        log_trade('V32b', sym_key, 'REDUCE', d, entry, price, cut, pnl,
+                                  '减仓|REDUCE', '置信=%.2f<%.2f_浮盈ATR=%.2f' % (conf, cfg['reduce_conf'], pnl_atr),
+                                  state['cash'], state['cash'])
                         pos['vol'] = vol - cut
                         pos['_trail'] = trail
                         surviving.append(pos)
@@ -316,7 +311,10 @@ def main():
                         state.setdefault('trades', []).append(trade)
                         emoji = '🟢' if pnl>0 else '🔴'
                         print('  %s [V32b-STOP] %s %s %d手 @%.0f→%.0f PnL=%+.0f' % (emoji, sym_key, d, vol, entry, ep, pnl))
-                        log_event('V28 STOP %s %s %d手 @%s→%s PnL=%+.0f' % (sym_key, d, vol, entry, ep, pnl))
+                        log_event('V32b STOP %s %s %d手 @%s→%s PnL=%+.0f' % (sym_key, d, vol, entry, ep, pnl))
+                        log_trade('V32b', sym_key, 'CLOSE', d, entry, ep, vol, pnl,
+                                  '止损|STOP', '有效止损=%.1f_硬止损=%.1f_追踪=%.1f_概率=%.3f' % (eff_stop, hard_stop, trail, prob),
+                                  state['cash'], state['cash'])
                         try: send_alert('%s [V32b] 止损 | %s' % (emoji, sym_key),
                             '%s %d手 @%s→%.0f\nPnL=%+.0f' % (d,vol,entry,ep,pnl), color='red' if pnl<0 else 'green', pin=True)
                         except: pass
@@ -327,7 +325,10 @@ def main():
                                  'pnl': pnl, 'type': 'REVERSE', 'time': now.isoformat()}
                         state.setdefault('trades', []).append(trade)
                         print('  🔴 [V32b-REV] %s %s→反手平仓 @%.0f PnL=%+.0f' % (sym_key, d, price, pnl))
-                        log_event('V28 REV %s %s %d手 @%s→%s PnL=%+.0f' % (sym_key, d, vol, entry, price, pnl))
+                        log_event('V32b REV %s %s %d手 @%s→%s PnL=%+.0f' % (sym_key, d, vol, entry, price, pnl))
+                        log_trade('V32b', sym_key, 'CLOSE', d, entry, price, vol, pnl,
+                                  '反手|REVERSE', '概率=%.3f<%.2f_反手阈值' % (prob, cfg['reverse_conf']),
+                                  state['cash'], state['cash'])
                         try: send_alert('🔴 [V32b] 反手 | %s' % sym_key,
                             '平%s %d手 @%s→%.0f\nPnL=%+.0f' % (d,vol,entry,price,pnl), color='red', pin=True)
                         except: pass
@@ -340,7 +341,10 @@ def main():
                                  'pnl': pnl, 'type': 'REDUCE', 'time': now.isoformat()}
                         state.setdefault('trades', []).append(trade)
                         print('  🟡 [V32b-RED] %s 减仓 %d→%d手 @%.0f PnL=%+.0f' % (sym_key, vol, vol-cut, price, pnl))
-                        log_event('V28 RED %s %s %d→%d手 @%.0f PnL=%+.0f' % (sym_key, d, vol, vol-cut, price, pnl))
+                        log_event('V32b RED %s %s %d→%d手 @%.0f PnL=%+.0f' % (sym_key, d, vol, vol-cut, price, pnl))
+                        log_trade('V32b', sym_key, 'REDUCE', d, entry, price, cut, pnl,
+                                  '减仓|REDUCE', '置信=%.2f<%.2f_浮盈ATR=%.2f' % (conf, cfg['reduce_conf'], pnl_atr),
+                                  state['cash'], state['cash'])
                         pos['vol'] = vol - cut
                         pos['_trail'] = trail
                         surviving.append(pos)
@@ -353,7 +357,7 @@ def main():
             if not surviving:
                 del positions[sym_key]
 
-        # ===== V28 开仓/加仓 =====
+        # ===== V32b 开仓/加仓 =====
         for sym_key in SYMBOLS:
             if sym_key in traded_today and sym_key in positions: continue
             
@@ -414,7 +418,10 @@ def main():
                     traded_today.add(sym_key)
                     marg = ps * price * cfg['multiplier'] * 0.15
                     print('  🟢 [V32b] 开多 %s %d手 @%.0f 止损%.0f 保证金¥%.1f万' % (sym_key, ps, price, entry_stop, marg/10000))
-                    log_event('V28 OPEN %s LONG %d手 @%s STOP=%s' % (sym_key, ps, price, entry_stop))
+                    log_event('V32b OPEN %s LONG %d手 @%s STOP=%s' % (sym_key, ps, price, entry_stop))
+                    log_trade('V32b', sym_key, 'OPEN', 'LONG', price, 0, ps, 0,
+                              '模型信号|SIGNAL', '概率=%.3f_置信=%.2f_ATR=%.1f_stop=%.0f' % (prob, conf, atr, entry_stop),
+                              state['cash'], state['cash'])
                     try: send_alert('🟢 [V32b] 开多 | %s' % sym_key,
                         '%d手 @%.0f\n止损%.0f\n保证金¥%.1f万' % (ps, price, entry_stop, marg/10000),
                         color='blue', pin=True)
@@ -430,7 +437,10 @@ def main():
                     traded_today.add(sym_key)
                     marg = ps * price * cfg['multiplier'] * 0.15
                     print('  🔴 [V32b] 开空 %s %d手 @%.0f 止损%.0f 保证金¥%.1f万' % (sym_key, ps, price, entry_stop, marg/10000))
-                    log_event('V28 OPEN %s SHORT %d手 @%s STOP=%s' % (sym_key, ps, price, entry_stop))
+                    log_event('V32b OPEN %s SHORT %d手 @%s STOP=%s' % (sym_key, ps, price, entry_stop))
+                    log_trade('V32b', sym_key, 'OPEN', 'SHORT', price, 0, ps, 0,
+                              '模型信号|SIGNAL', '概率=%.3f_置信=%.2f_ATR=%.1f_stop=%.0f' % (prob, conf, atr, entry_stop),
+                              state['cash'], state['cash'])
                     try: send_alert('🔴 [V32b] 开空 | %s' % sym_key,
                         '%d手 @%.0f\n止损%.0f\n保证金¥%.1f万' % (ps, price, entry_stop, marg/10000),
                         color='blue', pin=True)
@@ -457,7 +467,10 @@ def main():
                     positions[sym_key] = cur_positions
                     total_now = sum(p['vol'] for p in cur_positions)
                     print('  ➕ [V32b] 加仓 %s +%d手 @%.0f 共%d手 浮盈%.1fATR' % (sym_key, ps, price, total_now, pnl_atr))
-                    log_event('V28 ADD %s +%d手 @%s 共%d手' % (sym_key, ps, price, total_now))
+                    log_event('V32b ADD %s +%d手 @%s 共%d手' % (sym_key, ps, price, total_now))
+                    log_trade('V32b', sym_key, 'ADD', existing_dir, price, 0, ps, 0,
+                              '加仓|ADD', '置信=%.2f>%.2f_浮盈ATR=%.2f>%.1f' % (conf, cfg['add_conf'], pnl_atr, cfg['add_atr']),
+                              state['cash'], state['cash'])
                     try: send_alert('➕ [V32b] 加仓 | %s' % sym_key,
                         '+%d手 @%.0f 共%d手\n浮盈%.1fATR' % (ps, price, total_now, pnl_atr),
                         color='green', pin=True)
@@ -483,7 +496,7 @@ def main():
             if not running: break
             time.sleep(1)
 
-    print('\nShutting down V32b...')
+    print('\nShutting down V28...')
     save_state(state)
     print('Final equity: ¥%s' % format(int(state['cash']), ','))
     print('Total trades: %d' % len(state.get('trades', [])))

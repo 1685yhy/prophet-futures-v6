@@ -1,18 +1,21 @@
 #!/usr/bin/env python3
 """
-Prophet Futures — Paper Trading Engine V30
-校准模型驱动动态交易: 持有/加仓/减仓/反手
-V30 = V29逻辑 + Platt校准模型 (_xgb_calibrated.pkl)
+Prophet Futures — Paper Trading Engine V28
+模型驱动动态交易: 持有/加仓/减仓/反手
+V30 = V29逻辑 + Platt校准模型 (_xgb_calibrated.pkl) + 模型动态决策
 独立状态文件 paper_state_v30.json
 """
 import sys, os, time, json, signal, pickle
 import numpy as np, pandas as pd
 from datetime import datetime, timedelta
 import akshare as ak
+from trade_logger import log_trade
 
 try:
     from feishu_send import send_alert, send_scan
-except: pass
+except Exception as _fe:
+    import sys
+    print(f"[WARN] feishu_send import failed: {_fe}. Feishu alerts disabled.", file=sys.stderr, flush=True)
 
 # ===== CONFIG =====
 SYMBOLS = {
@@ -132,35 +135,29 @@ def calc_position_size(capital, price, atr, cfg):
 # ===== MAIN =====
 def main():
     global running
-    # PID锁
+    # PID锁: 防止重复启动
     import fcntl
     lock_fd = open('/tmp/paper_v30.lock', 'w')
     try:
         fcntl.flock(lock_fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
         lock_fd.write(str(os.getpid())); lock_fd.flush()
     except (IOError, OSError):
-        print('V30已在运行,退出')
+        print('V28已在运行,退出')
         sys.exit(0)
     
     print('=' * 60)
-    print('  Prophet V30 — 校准模型动态交易引擎')
-    print('  Capital: ¥{:,}  |  {}'.format(CAPITAL, datetime.now().strftime('%Y-%m-%d %H:%M')))
+    print('  Prophet V30 — 动态加仓/减仓/反手引擎')
+    print('  Capital: ¥%s  |  %s' % (format(CAPITAL, ','), datetime.now().strftime('%Y-%m-%d %H:%M')))
     print('  LH: ATR×1.5 加仓>2ATR&65% 反手<35% | JM: ATR×2.0 加仓>2.5ATR&65% 反手<30%')
     print('=' * 60)
 
-    # Load models — V30 用校准模型
+    # Load models
     models = {}
     for sym_key in SYMBOLS:
-        loaded = False
-        for suffix in ['_xgb_calibrated.pkl', '_xgb_new.pkl']:
-            mp = os.path.join(MODEL_DIR, sym_key+suffix)
-            if os.path.exists(mp):
-                with open(mp, 'rb') as f: models[sym_key] = pickle.load(f)
-                print('  %s: loaded (%s)' % (sym_key, os.path.basename(mp)))
-                loaded = True
-                break
-        if not loaded:
-            print('  %s: missing model' % sym_key)
+        mp = os.path.join(MODEL_DIR, sym_key+'_xgb.pkl')
+        if os.path.exists(mp):
+            with open(mp, 'rb') as f: models[sym_key] = pickle.load(f)
+            print('  %s: loaded' % sym_key)
 
     # Load state
     state = load_state()
@@ -202,7 +199,7 @@ def main():
                 time.sleep(1)
             continue
 
-        print('\n[%s] V29 Scanning...' % now.strftime('%H:%M:%S'))
+        print('\n[%s] V30 Scanning...' % now.strftime('%H:%M:%S'))
 
         # Fetch daily data
         daily_dfs = {}
@@ -212,7 +209,7 @@ def main():
             if df is not None and len(df) >= 100:
                 daily_dfs[sym_key] = df
 
-        # ===== V29 管理现有持仓 =====
+        # ===== V30 管理现有持仓 =====
         positions = state['positions']
         for sym_key in list(positions.keys()):
             pos_list = positions[sym_key]  # list of sub-positions
@@ -269,6 +266,9 @@ def main():
                         print('  %s [V30-STOP] %s %s %d手 @%.0f→%.0f PnL=%+.0f 余额=¥%s' % (
                             emoji, sym_key, d, vol, entry, ep, pnl, format(int(state['cash']), ',')))
                         log_event('V30 STOP %s %s %d手 @%s→%s PnL=%+.0f' % (sym_key, d, vol, entry, ep, pnl))
+                        log_trade('V30', sym_key, 'CLOSE', d, entry, ep, vol, pnl,
+                                  '止损|STOP', '有效止损=%.1f_硬止损=%.1f_追踪=%.1f_概率=%.3f' % (eff_stop, hard_stop, trail, prob),
+                                  state['cash'], state['cash'])
                         try: send_alert('%s [V30] 止损 | %s' % (emoji, sym_key),
                             '%s %d手 @%s→%s\nPnL=%+.0f\n余额 ¥%s' % (d,vol,entry,ep,pnl,format(int(state['cash']),',')),
                             color='red' if pnl<0 else 'green', pin=True)
@@ -281,6 +281,9 @@ def main():
                         state.setdefault('trades', []).append(trade)
                         print('  🔴 [V30-REV] %s %s→反手平仓 @%.0f PnL=%+.0f' % (sym_key, d, price, pnl))
                         log_event('V30 REV %s %s %d手 @%s→%s PnL=%+.0f' % (sym_key, d, vol, entry, price, pnl))
+                        log_trade('V30', sym_key, 'CLOSE', d, entry, price, vol, pnl,
+                                  '反手|REVERSE', '概率=%.3f<%.2f_反手阈值' % (prob, cfg['reverse_conf']),
+                                  state['cash'], state['cash'])
                         try: send_alert('🔴 [V30] 反手 | %s' % sym_key,
                             '平%s %d手 @%s→%.0f\nPnL=%+.0f' % (d,vol,entry,price,pnl), color='red', pin=True)
                         except: pass
@@ -293,7 +296,10 @@ def main():
                                  'pnl': pnl, 'type': 'REDUCE', 'time': now.isoformat()}
                         state.setdefault('trades', []).append(trade)
                         print('  🟡 [V30-RED] %s 减仓 %d→%d手 @%.0f PnL=%+.0f' % (sym_key, vol, vol-cut, price, pnl))
-                        log_event('V29 RED %s %s %d→%d手 @%.0f PnL=%+.0f' % (sym_key, d, vol, vol-cut, price, pnl))
+                        log_event('V30 RED %s %s %d→%d手 @%.0f PnL=%+.0f' % (sym_key, d, vol, vol-cut, price, pnl))
+                        log_trade('V30', sym_key, 'REDUCE', d, entry, price, cut, pnl,
+                                  '减仓|REDUCE', '置信=%.2f<%.2f_浮盈ATR=%.2f' % (conf, cfg['reduce_conf'], pnl_atr),
+                                  state['cash'], state['cash'])
                         pos['vol'] = vol - cut
                         pos['_trail'] = trail
                         surviving.append(pos)
@@ -319,6 +325,9 @@ def main():
                         emoji = '🟢' if pnl>0 else '🔴'
                         print('  %s [V30-STOP] %s %s %d手 @%.0f→%.0f PnL=%+.0f' % (emoji, sym_key, d, vol, entry, ep, pnl))
                         log_event('V30 STOP %s %s %d手 @%s→%s PnL=%+.0f' % (sym_key, d, vol, entry, ep, pnl))
+                        log_trade('V30', sym_key, 'CLOSE', d, entry, ep, vol, pnl,
+                                  '止损|STOP', '有效止损=%.1f_硬止损=%.1f_追踪=%.1f_概率=%.3f' % (eff_stop, hard_stop, trail, prob),
+                                  state['cash'], state['cash'])
                         try: send_alert('%s [V30] 止损 | %s' % (emoji, sym_key),
                             '%s %d手 @%s→%.0f\nPnL=%+.0f' % (d,vol,entry,ep,pnl), color='red' if pnl<0 else 'green', pin=True)
                         except: pass
@@ -330,6 +339,9 @@ def main():
                         state.setdefault('trades', []).append(trade)
                         print('  🔴 [V30-REV] %s %s→反手平仓 @%.0f PnL=%+.0f' % (sym_key, d, price, pnl))
                         log_event('V30 REV %s %s %d手 @%s→%s PnL=%+.0f' % (sym_key, d, vol, entry, price, pnl))
+                        log_trade('V30', sym_key, 'CLOSE', d, entry, price, vol, pnl,
+                                  '反手|REVERSE', '概率=%.3f<%.2f_反手阈值' % (prob, cfg['reverse_conf']),
+                                  state['cash'], state['cash'])
                         try: send_alert('🔴 [V30] 反手 | %s' % sym_key,
                             '平%s %d手 @%s→%.0f\nPnL=%+.0f' % (d,vol,entry,price,pnl), color='red', pin=True)
                         except: pass
@@ -342,7 +354,10 @@ def main():
                                  'pnl': pnl, 'type': 'REDUCE', 'time': now.isoformat()}
                         state.setdefault('trades', []).append(trade)
                         print('  🟡 [V30-RED] %s 减仓 %d→%d手 @%.0f PnL=%+.0f' % (sym_key, vol, vol-cut, price, pnl))
-                        log_event('V29 RED %s %s %d→%d手 @%.0f PnL=%+.0f' % (sym_key, d, vol, vol-cut, price, pnl))
+                        log_event('V30 RED %s %s %d→%d手 @%.0f PnL=%+.0f' % (sym_key, d, vol, vol-cut, price, pnl))
+                        log_trade('V30', sym_key, 'REDUCE', d, entry, price, cut, pnl,
+                                  '减仓|REDUCE', '置信=%.2f<%.2f_浮盈ATR=%.2f' % (conf, cfg['reduce_conf'], pnl_atr),
+                                  state['cash'], state['cash'])
                         pos['vol'] = vol - cut
                         pos['_trail'] = trail
                         surviving.append(pos)
@@ -355,7 +370,7 @@ def main():
             if not surviving:
                 del positions[sym_key]
 
-        # ===== V29 开仓/加仓 =====
+        # ===== V30 开仓/加仓 =====
         for sym_key in SYMBOLS:
             if sym_key in traded_today and sym_key in positions: continue
             
@@ -417,6 +432,9 @@ def main():
                     marg = ps * price * cfg['multiplier'] * 0.15
                     print('  🟢 [V30] 开多 %s %d手 @%.0f 止损%.0f 保证金¥%.1f万' % (sym_key, ps, price, entry_stop, marg/10000))
                     log_event('V30 OPEN %s LONG %d手 @%s STOP=%s' % (sym_key, ps, price, entry_stop))
+                    log_trade('V30', sym_key, 'OPEN', 'LONG', price, 0, ps, 0,
+                              '模型信号|SIGNAL', '概率=%.3f_置信=%.2f_ATR=%.1f_stop=%.0f' % (prob, conf, atr, entry_stop),
+                              state['cash'], state['cash'])
                     try: send_alert('🟢 [V30] 开多 | %s' % sym_key,
                         '%d手 @%.0f\n止损%.0f\n保证金¥%.1f万' % (ps, price, entry_stop, marg/10000),
                         color='blue', pin=True)
@@ -433,6 +451,9 @@ def main():
                     marg = ps * price * cfg['multiplier'] * 0.15
                     print('  🔴 [V30] 开空 %s %d手 @%.0f 止损%.0f 保证金¥%.1f万' % (sym_key, ps, price, entry_stop, marg/10000))
                     log_event('V30 OPEN %s SHORT %d手 @%s STOP=%s' % (sym_key, ps, price, entry_stop))
+                    log_trade('V30', sym_key, 'OPEN', 'SHORT', price, 0, ps, 0,
+                              '模型信号|SIGNAL', '概率=%.3f_置信=%.2f_ATR=%.1f_stop=%.0f' % (prob, conf, atr, entry_stop),
+                              state['cash'], state['cash'])
                     try: send_alert('🔴 [V30] 开空 | %s' % sym_key,
                         '%d手 @%.0f\n止损%.0f\n保证金¥%.1f万' % (ps, price, entry_stop, marg/10000),
                         color='blue', pin=True)
@@ -459,7 +480,10 @@ def main():
                     positions[sym_key] = cur_positions
                     total_now = sum(p['vol'] for p in cur_positions)
                     print('  ➕ [V30] 加仓 %s +%d手 @%.0f 共%d手 浮盈%.1fATR' % (sym_key, ps, price, total_now, pnl_atr))
-                    log_event('V29 ADD %s +%d手 @%s 共%d手' % (sym_key, ps, price, total_now))
+                    log_event('V30 ADD %s +%d手 @%s 共%d手' % (sym_key, ps, price, total_now))
+                    log_trade('V30', sym_key, 'ADD', existing_dir, price, 0, ps, 0,
+                              '加仓|ADD', '置信=%.2f>%.2f_浮盈ATR=%.2f>%.1f' % (conf, cfg['add_conf'], pnl_atr, cfg['add_atr']),
+                              state['cash'], state['cash'])
                     try: send_alert('➕ [V30] 加仓 | %s' % sym_key,
                         '+%d手 @%.0f 共%d手\n浮盈%.1fATR' % (ps, price, total_now, pnl_atr),
                         color='green', pin=True)
@@ -485,7 +509,7 @@ def main():
             if not running: break
             time.sleep(1)
 
-    print('\nShutting down V29...')
+    print('\nShutting down V28...')
     save_state(state)
     print('Final equity: ¥%s' % format(int(state['cash']), ','))
     print('Total trades: %d' % len(state.get('trades', [])))
