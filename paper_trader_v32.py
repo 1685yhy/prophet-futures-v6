@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Prophet Futures — Paper Trading Engine V28
+Prophet Futures — Paper Trading Engine V32
 模型驱动动态交易: 持有/加仓/减仓/反手
 V32 = 紧止损宽止盈 + v31模型 + 模型动态决策
 独立状态文件 paper_state_v32.json
@@ -129,7 +129,7 @@ def main():
         fcntl.flock(lock_fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
         lock_fd.write(str(os.getpid())); lock_fd.flush()
     except (IOError, OSError):
-        print('V28已在运行,退出')
+        print('V32已在运行,退出')
         sys.exit(0)
     
     print('=' * 60)
