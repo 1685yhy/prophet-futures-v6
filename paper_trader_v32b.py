@@ -140,8 +140,10 @@ def main():
 
     # Load models
     models = {}
+# V32b uses newly trained model from v5 backtest
+    MODEL_MAP = {'lh2609': 'v31_xgb.pkl'}
     for sym_key in SYMBOLS:
-        mp = os.path.join(MODEL_DIR, sym_key+'_xgb.pkl')
+        mp = os.path.join(MODEL_DIR, MODEL_MAP.get(sym_key, sym_key+'_xgb.pkl'))
         if os.path.exists(mp):
             with open(mp, 'rb') as f: models[sym_key] = pickle.load(f)
             print('  %s: loaded' % sym_key)
