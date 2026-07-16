@@ -176,6 +176,14 @@ def main():
     print('  V29 引擎就绪 (独立状态: paper_state_v29.json)')
     print('='*60 + '\n')
 
+    # 恢复检查：启动时补执行已穿止损
+    try:
+        from trader_recovery import run_recovery
+        run_recovery(STATE_FILE, SYMBOLS, 'V29')
+    except Exception as e:
+        print(f"  [V29] 恢复检查跳过: {e}")
+    
+
     traded_today = set()
     today_str = datetime.now().strftime('%Y%m%d')
 

@@ -165,6 +165,14 @@ def main():
     print('  V32b 引擎就绪 (独立状态: paper_state_v32b.json)')
     print('='*60 + '\n')
 
+    # 恢复检查：启动时补执行已穿止损
+    try:
+        from trader_recovery import run_recovery
+        run_recovery(STATE_FILE, SYMBOLS, 'V32B')
+    except Exception as e:
+        print(f"  [V32B] 恢复检查跳过: {e}")
+    
+
     traded_today = set()
     today_str = datetime.now().strftime('%Y%m%d')
 

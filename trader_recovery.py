@@ -85,4 +85,5 @@ def run_recovery(state_file, symbols, label):
     if recovered:
         with open(state_file, 'w') as f:
             json.dump(state, f, indent=2, default=str)
-        print(f'  [{label}] 恢复完成, 现金=¥{state[\"cash\"]:,.0f}')
+        cash_str = format(state['cash'], ',.0f')
+        print(f'  [{label}] 恢复完成, 现金=¥{cash_str}')
