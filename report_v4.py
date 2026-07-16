@@ -280,6 +280,16 @@ def analyze(sk,cfg,df,pos,price,atr,prob):
             lines.append('| 加仓触发 | 价到%.0f(还需%.0f点)+模型>%d%% |'%(tp,need*atr,int(cfg['add_conf']*100)))
         if pa>=cfg['be_atr']:lines.append('| 保本 | ✅ 止损已移到入场价 |')
         if pa>=cfg['trail_atr']:lines.append('| 移动止损 | ✅ 已启动 |')
+    # 操作指令
+    lines.append('| **指令** | 止损¥%.0f | 止盈¥%.0f |'%(es,tp))
+    if should_reverse:
+        lines.append('|  | ⚡ **立即反手做%s @%.0f** |'%('空'if d=='LONG'else'多',price))
+    elif can_add:
+        lines.append('|  | ✅ 可加仓%d手 |'%add)
+    elif should_reduce:
+        lines.append('|  | ⚠️ 减仓锁利 |')
+    else:
+        lines.append('|  | 持有观望 |')
     
     return True,level,summary,lines
 
@@ -400,6 +410,16 @@ def analyze_v28(sk,cfg,df,pos28,price,atr,prob):
             lines.append('| 加仓触发 | 价到%.0f(还需%.0f点)+模型>%d%% |'%(tp,need*atr,int(cfg['add_conf']*100)))
         if pa_atr>=cfg['be_atr']:lines.append('| 保本 | ✅ 止损已移到均价 |')
         if pa_atr>=cfg['trail_atr']:lines.append('| 移动止损 | ✅ 已启动 |')
+    # 操作指令总结
+    lines.append('| **指令** | 止损¥%.0f | 止盈¥%.0f |'%(es,tp))
+    if should_reverse:
+        lines.append('|  | ⚡ **立即反手做%s @%.0f** |'%('空'if d28=='LONG'else'多',price))
+    elif can_add:
+        lines.append('|  | ✅ 可加仓%d手 |'%add)
+    elif should_reduce:
+        lines.append('|  | ⚠️ 减仓至%d手 |'%(tv-cut))
+    else:
+        lines.append('|  | 持有观望 |')
     
     return True,level,summary,lines
 
@@ -571,7 +591,15 @@ def scan():
                 ele3.append(md('\n'.join(lines)))
             else:
                 s_txt='做多'if prob>0.5 else'做空';conf=int((prob if prob>0.5 else 1-prob)*100)
-                ele3.append(md('⚪ **%s** 空仓 | 模型%s %d%% | 现价%.0f 待信号入场'%(cfg['cn'],s_txt,conf,price)))
+                entry_price=price
+                atr_m=cfg.get('atr_stop',1.5);rr_v=cfg.get('rr',4.0)
+                stop_p=entry_price-atr*atr_m if s_txt=='做多'else entry_price+atr*atr_m
+                risk_pts=abs(entry_price-stop_p);tp_p=entry_price+risk_pts*rr_v if s_txt=='做多'else entry_price-risk_pts*rr_v
+                can_enter=conf>=55
+                ele3.append(md('⚪ **%s** 空仓 | 模型%s %d%% %s'%(cfg['cn'],s_txt,conf,'✅可入场'if can_enter else'❌信心不足')))
+                if can_enter:
+                    ele3.append(md('  📍 入场价%.0f → 止损%.0f → 止盈%.0f (RR=%.1f×)'%(entry_price,stop_p,tp_p,rr_v)))
+                    ele3.append(md('  ⚠️ 止损距%.0f点(%.1fATR) | 止盈距%.0f点'%(risk_pts,risk_pts/atr,abs(tp_p-entry_price))))
         ts=s_ver.get('trades',[]);ts_t=[t for t in ts if today in str(t.get('time',''))]
         if ts_t:
             ele3.append(md('**今日成交**'))
