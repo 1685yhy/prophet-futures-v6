@@ -1,28 +1,18 @@
 {
-  "cash": 111886.5,
-  "positions": {
-    "lh2609": [
-      {
-        "dir": "LONG",
-        "entry": 12255.0,
-        "vol": 6,
-        "_entry_time": "2026-07-03T09:00:00.992188",
-        "_trail": 11924.625,
-        "bar_count": 0
-      }
-    ],
-    "jm2609": [
-      {
-        "dir": "SHORT",
-        "entry": 1293.5,
-        "vol": 1,
-        "_entry_time": "2026-07-09T09:00:16.887943",
-        "_trail": 1370.35,
-        "bar_count": 0
-      }
-    ]
-  },
-  "trades": [],
+  "cash": 256430.7336,
+  "positions": {},
+  "trades": [
+    {
+      "sym": "lh2609",
+      "dir": "LONG",
+      "entry": 12255.0,
+      "exit": 11924.625,
+      "vol": 6,
+      "pnl": -31927.766400000004,
+      "type": "RECOVERY",
+      "time": "2026-07-16T21:25:17.014123"
+    }
+  ],
   "equity_history": [
     {
       "time": "2026-07-13T09:00:24.996735",
