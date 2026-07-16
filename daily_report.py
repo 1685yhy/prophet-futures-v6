@@ -296,18 +296,26 @@ def collect_all_positions(market_data):
                 d = pos['dir']
                 stop = pos.get('stop', pos.get('_trail', 0))
                 tp = pos.get('take_profit', 0)
+                # 计算止盈/动态出场价
+                tp = pos.get('take_profit', 0)  # V25固定止盈
+                trail = pos.get('_trail', 0)     # V28+动态追踪出场
+                # 动态版本的出场价用_trail，固定版本用take_profit
+                exit_price = trail if trail and ver_label not in ('V25','V31') else tp
                 multiplier = cfg.get('multiplier', 10)
 
                 if d == 'LONG':
                     pnl_pts = cur - entry
                     dist_stop = cur - stop if stop else 999
+                    dist_exit = exit_price - cur if exit_price else 0
                 else:
                     pnl_pts = entry - cur
                     dist_stop = stop - cur if stop else 999
+                    dist_exit = cur - exit_price if exit_price else 0
 
                 pnl_emoji = '🟢' if pnl_pts >= 0 else '🔴'
                 dir_cn = '做多' if d == 'LONG' else '做空'
                 risk = f'🚨{dist_stop:.0f}' if dist_stop < 50 else f'⚠️{dist_stop:.0f}' if dist_stop < 100 else f'{dist_stop:.0f}'
+                exit_str = f'{exit_price:.0f}(+{dist_exit:.0f})' if exit_price else '—'
 
                 rows.append({
                     'ver': ver_label,
@@ -321,7 +329,9 @@ def collect_all_positions(market_data):
                     'stop': stop,
                     'dist_stop': dist_stop,
                     'risk': risk,
-                    'tp': tp,
+                    'exit_price': exit_price,
+                    'dist_exit': dist_exit,
+                    'exit_str': exit_str,
                 })
     return rows
 
@@ -336,14 +346,14 @@ def build_positions_table(positions_rows, market_data):
 
     lines = [
         "**📌 持仓**\n",
-        "| 版本 | 品种 | 方向 | 手 | 成本 | 现价 | 浮盈 | 止损 | 距止损 |",
-        "|------|------|------|----|------|------|------|------|--------|",
+        "| 版本 | 品种 | 方向 | 手 | 成本 | 现价 | 浮盈 | 止损 | 距止损 | 止盈/出场 |",
+        "|------|------|------|----|------|------|------|------|--------|-----------|",
     ]
     for r in positions_rows:
         lines.append(
             f"| {r['ver']} | {r['name']} | {r['pnl_emoji']} {r['dir']} | {r['vol']} | "
             f"{r['entry']:.0f} | {r['cur']:.0f} | {r['pnl_pts']:+.0f}点 | "
-            f"{r['stop']:.0f} | {r['risk']} |"
+            f"{r['stop']:.0f} | {r['risk']} | {r['exit_str']} |"
         )
     return "\n".join(lines)
 

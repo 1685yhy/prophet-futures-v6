@@ -250,6 +250,9 @@ def analyze(sk,cfg,df,pos,price,atr,prob):
     lines.append('| 现价 | %.0f (ATR %.0f) |'%(price,atr))
     lines.append('| 浮盈 | %s%.1f万 (%+.1f%%) |'%(ps,pa_amt/10000,pa_pct*100))
     lines.append('| 止损 | %.0f → 跌破就平仓 |'%es)
+    sys_tp = pos.get('take_profit', 0)
+    if sys_tp:
+        lines.append('| 止盈 | %.0f (固定) |'%sys_tp)
     lines.append('| 模型 | %s%s %d%% |'%(si,signal,conf))
     
     if should_reverse:
@@ -353,6 +356,7 @@ def analyze_v28(sk,cfg,df,pos28,price,atr,prob):
     lines.append('| 浮盈 | %s%.1f万 (%+.1f%%) |'%(ps28,pa_amt/10000,pa_pct*100))
     if sys_trail is not None:
         lines.append('| 系统止损 | %.0f (距%.0f点) |'%(es,sp))
+        lines.append('| 动态出场 | %.0f (追踪止盈) |'%sys_trail)
     else:
         lines.append('| 止损(算) | %.0f |'%es)
     lines.append('| 模型 | %s%s %d%% |'%(si,signal,conf))
