@@ -13,6 +13,7 @@ from datetime import datetime, timedelta
 import akshare as ak
 from feishu_card import send_card, md, hr
 from realtime_data import get_realtime_quote, get_daily_history, build_features, SYMBOL_MAP
+from risk_calc import get_latest_quote, calc_stop, calc_tp, calc_trail
 
 SYMBOLS = {
     'lh2609': {'code': 'LH0', 'name': 'LH 生猪', 'cost': 0.0006, 'multiplier': 16,
@@ -287,6 +288,7 @@ def collect_all_positions(market_data):
             name = cfg.get('name', sym_key)
             m = market_data.get(sym_key, {})
             cur = m.get('price', 0) if m else 0
+            atr = m.get('atr', 100) if m else 100
 
             # V25 是单仓位 dict，V28/V29 是列表
             pos_list = pos_data if isinstance(pos_data, list) else [pos_data]
@@ -295,15 +297,18 @@ def collect_all_positions(market_data):
                 vol = pos['vol']
                 d = pos['dir']
                 stop = pos.get('stop', pos.get('_trail', 0))
-                # 实时计算止盈：风险距离 × RR
+                # 用系统实时ATR重算止损和止盈
+                atr_mult_map = {'V25':1.5,'V28':1.5,'V29':1.5,'V30':2.0,'V31':1.5,'V32':0.5,'V32b':0.5}
                 rr_map = {'V25':4.0,'V28':4.0,'V29':4.0,'V30':3.5,'V31':4.0,'V32':6.0,'V32b':5.0}
+                atr_m = atr_mult_map.get(ver_label, 1.5)
                 rr = rr_map.get(ver_label, 4.0)
+                fresh_stop = calc_stop(entry, d, atr, atr_m)
+                # 只紧不松：取系统存的(可能已追踪)和新算的(当前ATR)中更紧的
                 if d == 'LONG':
-                    risk = entry - stop if stop < entry else entry * 0.01
-                    tp_price = entry + risk * rr
+                    effective_stop = max(stop, fresh_stop) if stop else fresh_stop
                 else:
-                    risk = stop - entry if stop > entry else entry * 0.01
-                    tp_price = entry - risk * rr
+                    effective_stop = min(stop, fresh_stop) if stop else fresh_stop
+                tp_price = calc_tp(entry, effective_stop, d, rr)
                 tp_str = f'¥{tp_price:.0f}' if tp_price > 0 else '—'
                 multiplier = cfg.get('multiplier', 10)
 
