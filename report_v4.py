@@ -510,6 +510,62 @@ def scan():
     ele2.append(md('V29 ¥%s | V30 ¥%s | %s'%(format(int(v29_eq),','),format(int(v30_eq),','),now.strftime('%H:%M'))))
     send('扫描② %s'%now.strftime('%H:%M'),ele2,'red'if act2 else('yellow'if warn2 else'blue'),bool(act2))
 
+    # ── 第三张卡 V31+V32+V32b ──
+    ele3=[];act3=[];warn3=[]
+    s31=lv31();s32=lv32();s32b=lv32b()
+    # V31/V32/V32b model probs
+    mp_v32=MD+'/'+'v31_xgb.pkl'
+    prob32=None
+    if os.path.exists(mp_v32) and data.get('lh2609'):
+        m32=pickle.load(open(mp_v32,'rb'))
+        d0=data['lh2609']; df0=d0.get('df')
+        if df0 is not None and len(df0)>70:
+            ft=bf(df0,len(df0)-1,60)
+            if ft is not None:
+                try: prob32=float(m32.predict_proba(ft.reshape(1,-1))[0][1])
+                except: prob32=None
+    
+    for ver_lbl,s_ver,model_info in [
+        ('V31 基线',s31,'_xgb.pkl 旧模型'),
+        ('V32 优化',s32,'v31_xgb.pkl 回测最优'),
+        ('V32b 保守',s32b,'v31_xgb.pkl 半仓不反手')]:
+        ele3.append(md(''))
+        ele3.append(md('━━━ **%s** ━━━'%ver_lbl))
+        ele3.append(md('模型: %s'%model_info))
+        for sk in['lh2609']:
+            if sk not in data:continue
+            d=data[sk];cfg=d['cfg'];price=d['price'];atr=d['atr']
+            pos=s_ver['positions'].get(sk,[])
+            prob=prob32 if prob32 is not None else d['prob']
+            if pos:
+                if isinstance(pos, list):
+                    has,level,summary,lines=analyze_v28(sk,cfg,d['df'],pos,price,atr,prob)
+                else:
+                    has,level,summary,lines=analyze(sk,cfg,d['df'],pos,price,atr,prob)
+                if level=='alert':act3.append('🔴 %s %s: %s'%(ver_lbl[:4],cfg['cn'],summary.replace('**','')))
+                elif level=='warn':warn3.append('⚠️ %s %s: %s'%(ver_lbl[:4],cfg['cn'],summary.replace('**','')))
+                ele3.append(md(summary))
+                ele3.append(md('\n'.join(lines)))
+            else:
+                s_txt='做多'if prob>0.5 else'做空';conf=int((prob if prob>0.5 else 1-prob)*100)
+                ele3.append(md('⚪ **%s** 空仓 | 模型%s %d%% | 现价%.0f 待信号入场'%(cfg['cn'],s_txt,conf,price)))
+        ts=s_ver.get('trades',[]);ts_t=[t for t in ts if today in str(t.get('time',''))]
+        if ts_t:
+            ele3.append(md('**今日成交**'))
+            for t in ts_t[-3:]:
+                cfg=S.get(t.get('sym',''),{})
+                cn=tp_cn(t.get('type','?'));reason=tp_reason(t.get('type','?'),cfg)
+                ele3.append(md('%s %s %d手 %+.0f → %s'%(t.get('time','')[-8:-3],cn,t.get('vol',0),t.get('pnl',0),reason)))
+    
+    if act3: banner3=['**⚠️ 需要操作**']+act3+['']; [ele3.insert(0,md(b)) for b in banner3]
+    elif warn3: banner3=['**⚡ 关注**']+warn3+['']; [ele3.insert(0,md(b)) for b in banner3]
+    
+    v31_eq=eq(s31,prices);v32_eq=eq(s32,prices);v32b_eq=eq(s32b,prices)
+    ele3.append(md(''))
+    ele3.append(md('V31 ¥%s | V32 ¥%s | V32b ¥%s | %s'%(
+        format(int(v31_eq),','),format(int(v32_eq),','),format(int(v32b_eq),','),now.strftime('%H:%M'))))
+    send('扫描③ %s'%now.strftime('%H:%M'),ele3,'red'if act3 else('yellow'if warn3 else'blue'),bool(act3))
+
 # ===== 早报 =====
 def morning():
     sv=ls();s28=lv28();s29=lv29();s30=lv30()
