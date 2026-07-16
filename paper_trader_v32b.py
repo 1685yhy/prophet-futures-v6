@@ -198,6 +198,22 @@ def main():
 
         print('\n[%s] V32b Scanning...' % now.strftime('%H:%M:%S'))
 
+        # === 保证金强平检查 ===
+        try:
+            from margin_call import check_margin_call
+            triggered, msg = check_margin_call(STATE_FILE, SYMBOLS)
+            if triggered:
+                print(f"  💥 {msg}")
+                state = load_state()
+                try:
+                    from feishu_send import send_alert
+                    send_alert("🚨 强平触发", msg, color="red", pin=True)
+                except: pass
+            elif "⚠️" in msg:
+                print(f"  ⚠️ {msg}")
+        except Exception as e:
+            pass
+
         # Fetch daily data
         daily_dfs = {}
         for sym_key in SYMBOLS:
