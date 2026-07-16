@@ -372,15 +372,15 @@ def main():
     
     print(f"\n{'='*60}")
     print(f"  V31 基线止盈止损已就绪")
-    print(f"  Waiting for trading hours...
+    print(f"  Waiting for trading hours...")
+    print(f"{'='*60}\n")
+
     # 恢复检查：启动时补执行已穿止损
     try:
         from trader_recovery import run_recovery
-        run_recovery(STATE_FILE, SYMBOLS, "V25")
+        run_recovery(STATE_FILE, SYMBOLS, "V31")
     except Exception as e:
-        print(f"  [V25] 恢复检查跳过: {e}")
-")
-    print(f"{'='*60}\n")
+        print(f"  [V31] 恢复检查跳过: {e}")
 
     traded_today = set()
     today_str = datetime.now().strftime('%Y%m%d')
