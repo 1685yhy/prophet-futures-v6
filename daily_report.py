@@ -80,11 +80,24 @@ def get_model_prediction(sym_key, ver=None):
         suffixes = ['_xgb_calibrated.pkl', '_xgb.pkl']
 
     mp = None
-    for suffix in suffixes:
-        candidate = os.path.join(MODEL_DIR, f'{sym_key}{suffix}')
-        if os.path.exists(candidate):
-            mp = candidate
-            break
+    # V32/V32b use flat model names (v31_xgb.pkl), others use {sym_key}{suffix}
+    if ver in ('V32', 'V32b'):
+        flat_name = os.path.join(MODEL_DIR, f'v31_{sym_key}_xgb.pkl' if ver == 'V32b' else 'v31_xgb.pkl')
+        # Try sym-specific first, then generic
+        for candidate in [
+            os.path.join(MODEL_DIR, f'v31_{sym_key}_xgb.pkl'),
+            os.path.join(MODEL_DIR, 'v31_xgb.pkl'),
+            os.path.join(MODEL_DIR, f'v31_jm_xgb.pkl'),
+        ]:
+            if os.path.exists(candidate):
+                mp = candidate
+                break
+    else:
+        for suffix in suffixes:
+            candidate = os.path.join(MODEL_DIR, f'{sym_key}{suffix}')
+            if os.path.exists(candidate):
+                mp = candidate
+                break
     if mp is None:
         return None
     try:
@@ -244,6 +257,7 @@ def get_market_data():
 def compute_equity(state, market_data=None):
     equity = state['cash']
     for k, p in state.get('positions', {}).items():
+        if 'jm' in k.lower(): continue
         multiplier = SYMBOLS.get(k, {}).get('multiplier', 10)
         cur = p['entry']
         if market_data and k in market_data:
@@ -268,6 +282,7 @@ def collect_all_positions(market_data):
             continue
         state = load_state(path)
         for sym_key, pos_data in state.get('positions', {}).items():
+            if 'jm' in sym_key.lower(): continue  # 跳过焦煤
             cfg = SYMBOLS.get(sym_key, {})
             name = cfg.get('name', sym_key)
             m = market_data.get(sym_key, {})
