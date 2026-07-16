@@ -295,22 +295,24 @@ def collect_all_positions(market_data):
                 vol = pos['vol']
                 d = pos['dir']
                 stop = pos.get('stop', pos.get('_trail', 0))
-                # 计算出场价
-                tp_val = pos.get('take_profit', 0)  # V25固定止盈
-                trail = pos.get('_trail', 0)         # V28+动态追踪出场
-                is_dynamic = ver_label not in ('V25','V31')
-                exit_price = trail if is_dynamic and trail else tp_val
-                exit_str = f'追踪¥{exit_price:.0f}' if is_dynamic and trail else (f'¥{exit_price:.0f}' if exit_price else '—')
+                # 实时计算止盈：风险距离 × RR
+                rr_map = {'V25':4.0,'V28':4.0,'V29':4.0,'V30':3.5,'V31':4.0,'V32':6.0,'V32b':5.0}
+                rr = rr_map.get(ver_label, 4.0)
+                if d == 'LONG':
+                    risk = entry - stop if stop < entry else entry * 0.01
+                    tp_price = entry + risk * rr
+                else:
+                    risk = stop - entry if stop > entry else entry * 0.01
+                    tp_price = entry - risk * rr
+                tp_str = f'¥{tp_price:.0f}' if tp_price > 0 else '—'
                 multiplier = cfg.get('multiplier', 10)
 
                 if d == 'LONG':
                     pnl_pts = cur - entry
                     dist_stop = cur - stop if stop else 999
-                    dist_exit = exit_price - cur if exit_price else 0
                 else:
                     pnl_pts = entry - cur
                     dist_stop = stop - cur if stop else 999
-                    dist_exit = cur - exit_price if exit_price else 0
 
                 pnl_emoji = '🟢' if pnl_pts >= 0 else '🔴'
                 dir_cn = '做多' if d == 'LONG' else '做空'
@@ -328,7 +330,7 @@ def collect_all_positions(market_data):
                     'stop': stop,
                     'dist_stop': dist_stop,
                     'risk': risk,
-                    'exit_str': exit_str,
+                    'exit_str': tp_str,
                 })
     return rows
 

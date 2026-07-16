@@ -250,9 +250,15 @@ def analyze(sk,cfg,df,pos,price,atr,prob):
     lines.append('| 现价 | %.0f (ATR %.0f) |'%(price,atr))
     lines.append('| 浮盈 | %s%.1f万 (%+.1f%%) |'%(ps,pa_amt/10000,pa_pct*100))
     lines.append('| 止损 | %.0f → 跌破就平仓 |'%es)
-    sys_tp = pos.get('take_profit', 0)
-    if sys_tp:
-        lines.append('| 止盈 | %.0f (固定) |'%sys_tp)
+    # 实时算止盈
+    v_rr = cfg.get('rr', 4.0)
+    if d == 'LONG':
+        risk = entry - es if es < entry else entry * 0.01
+        tp = entry + risk * v_rr
+    else:
+        risk = es - entry if es > entry else entry * 0.01
+        tp = entry - risk * v_rr
+    lines.append('| 止盈 | ¥%.0f (RR=%.1f×) |'%(tp, v_rr))
     lines.append('| 模型 | %s%s %d%% |'%(si,signal,conf))
     
     if should_reverse:
@@ -356,7 +362,20 @@ def analyze_v28(sk,cfg,df,pos28,price,atr,prob):
     lines.append('| 浮盈 | %s%.1f万 (%+.1f%%) |'%(ps28,pa_amt/10000,pa_pct*100))
     if sys_trail is not None:
         lines.append('| 系统止损 | %.0f (距%.0f点) |'%(es,sp))
-        lines.append('| 动态出场 | %.0f (追踪止盈) |'%sys_trail)
+        # 实时算止盈价
+        rr_map = {'V28':4.0,'V29':4.0,'V30':3.5,'V32':6.0,'V32b':5.0}
+        rr = 4.0
+        for k,v in rr_map.items():
+            if k.lower() in str(cfg.get('name','')).lower() or True: pass
+        # Use version-specific RR from SYMBOLS config
+        v_rr = cfg.get('rr', 4.0)
+        if d28 == 'LONG':
+            risk = ae - es if es < ae else ae * 0.01
+            tp = ae + risk * v_rr
+        else:
+            risk = es - ae if es > ae else ae * 0.01
+            tp = ae - risk * v_rr
+        lines.append('| 止盈价 | ¥%.0f (RR=%.1f×) |'%(tp, v_rr))
     else:
         lines.append('| 止损(算) | %.0f |'%es)
     lines.append('| 模型 | %s%s %d%% |'%(si,signal,conf))
