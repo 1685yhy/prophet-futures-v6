@@ -382,12 +382,14 @@ def main():
     except Exception as e:
         print(f"  [V31] 恢复检查跳过: {e}")
 
+    traded_today = set()
     today_str = datetime.now().strftime('%Y%m%d')
 
     while running:
         now = datetime.now()
         current_date = now.strftime('%Y%m%d')
         if current_date != today_str:
+            traded_today.clear()
             today_str = current_date
             # Reset bar counters for new day
             for p in state['positions'].values():
@@ -490,7 +492,7 @@ def main():
 
         # ===== SIGNAL GENERATION (NEW ENTRIES) =====
         for sym_key, cfg in SYMBOLS.items():
-            if sym_key in state['positions']:
+            if sym_key in traded_today or sym_key in state['positions']:
                 continue
 
             df = daily_dfs.get(sym_key)
@@ -575,7 +577,7 @@ def main():
                 '_rev_count': 0, 'bar_count': 0,
             }
             state['cash'] -= margin_used
-            .add(sym_key)
+            traded_today.add(sym_key)
             save_state(state)
             print(f"    ✅ 开仓 [V31动态] 硬止损={entry_stop:.0f} 参考目标={display_tp:.0f}")
             

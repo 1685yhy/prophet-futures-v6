@@ -172,12 +172,14 @@ def main():
     except Exception as e:
         print(f'  [V32] 恢复检查跳过: {e}')
     
+    traded_today = set()
     today_str = datetime.now().strftime('%Y%m%d')
 
     while running:
         now = datetime.now()
         current_date = now.strftime('%Y%m%d')
         if current_date != today_str:
+            traded_today.clear()
             today_str = current_date
             for v in state['positions'].values():
                 if isinstance(v, list):
@@ -382,7 +384,7 @@ def main():
 
         # ===== V32 开仓/加仓 =====
         for sym_key in SYMBOLS:
-            if sym_key in  and sym_key in positions: continue
+            if sym_key in traded_today and sym_key in positions: continue
             
             cfg = SYMBOLS[sym_key]
             df = daily_dfs.get(sym_key)
@@ -440,7 +442,7 @@ def main():
                     cur_positions.append({'dir': 'LONG', 'entry': price, 'vol': ps,
                         '_entry_time': now.isoformat(), '_trail': entry_stop})
                     positions[sym_key] = cur_positions
-                    .add(sym_key)
+                    traded_today.add(sym_key)
                     marg = ps * price * cfg['multiplier'] * 0.15
                     print('  🟢 [V32] 开多 %s %d手 @%.0f 止损%.0f 保证金¥%.1f万' % (sym_key, ps, price, entry_stop, marg/10000))
                     log_event('V32 OPEN %s LONG %d手 @%s STOP=%s' % (sym_key, ps, price, entry_stop))
@@ -459,7 +461,7 @@ def main():
                     cur_positions.append({'dir': 'SHORT', 'entry': price, 'vol': ps,
                         '_entry_time': now.isoformat(), '_trail': entry_stop})
                     positions[sym_key] = cur_positions
-                    .add(sym_key)
+                    traded_today.add(sym_key)
                     marg = ps * price * cfg['multiplier'] * 0.15
                     print('  🔴 [V32] 开空 %s %d手 @%.0f 止损%.0f 保证金¥%.1f万' % (sym_key, ps, price, entry_stop, marg/10000))
                     log_event('V32 OPEN %s SHORT %d手 @%s STOP=%s' % (sym_key, ps, price, entry_stop))
