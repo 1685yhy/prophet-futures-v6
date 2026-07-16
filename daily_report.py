@@ -295,12 +295,12 @@ def collect_all_positions(market_data):
                 vol = pos['vol']
                 d = pos['dir']
                 stop = pos.get('stop', pos.get('_trail', 0))
-                tp = pos.get('take_profit', 0)
-                # 计算止盈/动态出场价
-                tp = pos.get('take_profit', 0)  # V25固定止盈
-                trail = pos.get('_trail', 0)     # V28+动态追踪出场
-                # 动态版本的出场价用_trail，固定版本用take_profit
-                exit_price = trail if trail and ver_label not in ('V25','V31') else tp
+                # 计算出场价
+                tp_val = pos.get('take_profit', 0)  # V25固定止盈
+                trail = pos.get('_trail', 0)         # V28+动态追踪出场
+                is_dynamic = ver_label not in ('V25','V31')
+                exit_price = trail if is_dynamic and trail else tp_val
+                exit_str = f'追踪¥{exit_price:.0f}' if is_dynamic and trail else (f'¥{exit_price:.0f}' if exit_price else '—')
                 multiplier = cfg.get('multiplier', 10)
 
                 if d == 'LONG':
@@ -315,7 +315,6 @@ def collect_all_positions(market_data):
                 pnl_emoji = '🟢' if pnl_pts >= 0 else '🔴'
                 dir_cn = '做多' if d == 'LONG' else '做空'
                 risk = f'🚨{dist_stop:.0f}' if dist_stop < 50 else f'⚠️{dist_stop:.0f}' if dist_stop < 100 else f'{dist_stop:.0f}'
-                exit_str = f'{exit_price:.0f}(+{dist_exit:.0f})' if exit_price else '—'
 
                 rows.append({
                     'ver': ver_label,
@@ -329,8 +328,6 @@ def collect_all_positions(market_data):
                     'stop': stop,
                     'dist_stop': dist_stop,
                     'risk': risk,
-                    'exit_price': exit_price,
-                    'dist_exit': dist_exit,
                     'exit_str': exit_str,
                 })
     return rows
@@ -346,8 +343,8 @@ def build_positions_table(positions_rows, market_data):
 
     lines = [
         "**📌 持仓**\n",
-        "| 版本 | 品种 | 方向 | 手 | 成本 | 现价 | 浮盈 | 止损 | 距止损 | 止盈/出场 |",
-        "|------|------|------|----|------|------|------|------|--------|-----------|",
+        "| 版本 | 品种 | 方向 | 手 | 成本 | 现价 | 浮盈 | 止损 | 距止损 | 出场价 |",
+        "|------|------|------|----|------|------|------|------|--------|--------|",
     ]
     for r in positions_rows:
         lines.append(
