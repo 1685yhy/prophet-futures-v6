@@ -93,7 +93,13 @@ if __name__ == '__main__':
     check("数据源", check_data)
     check("模型文件", check_models)
     check("状态文件", check_state)
-    check("纸盘进程", lambda: check_process('paper_trader'))
+    # 逐个检查七个纸盘
+    for label, pattern in [
+        ('V25','paper_trader.py$'), ('V28','paper_trader_v28'), ('V29','paper_trader_v29'),
+        ('V30','paper_trader_v30'), ('V31','paper_trader_v31'), ('V32','paper_trader_v32'),
+        ('V32b','paper_trader_v32b')
+    ]:
+        check(f'纸盘{label}', lambda p=pattern: check_process(p))
     check("SimNow(云端)", check_simnow_server)
     
     # Hermes gateway is optional — report_v4 uses direct Feishu API
