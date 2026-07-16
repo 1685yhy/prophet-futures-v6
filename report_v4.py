@@ -387,7 +387,7 @@ def scan():
     
     # 预拉数据(一次)
     data={}
-    for sk in['lh2609','jm2609']:
+    for sk in['lh2609']:
         cfg=S[sk];df=fd(cfg['code'])
         if df is None:continue
         td=fm(cfg['fut'],today)
@@ -418,7 +418,7 @@ def scan():
     
     # ═══ V25 大块 ═══
     ele.append(md('━━━ **V25 原版** ━━━'))
-    for sk in['lh2609','jm2609']:
+    for sk in['lh2609']:
         if sk not in data:continue
         d=data[sk];cfg=d['cfg'];price=d['price'];atr=d['atr'];prob=d['prob']
         pos=sv['positions'].get(sk)
@@ -440,7 +440,7 @@ def scan():
     # ═══ V28 大块 ═══
     ele.append(md(''))
     ele.append(md('━━━ **V28 动态** ━━━'))
-    for sk in['lh2609','jm2609']:
+    for sk in['lh2609']:
         if sk not in data:continue
         d=data[sk];cfg=d['cfg'];price=d['price'];atr=d['atr'];prob=d['prob']
         pos28=s28['positions'].get(sk,[])
@@ -481,7 +481,7 @@ def scan():
     for ver_lbl,s_ver,prob_key in[('V29 新模型',s29,'prob_new'),('V30 校准版',s30,'prob_cal')]:
         ele2.append(md(''))
         ele2.append(md('━━━ **%s** ━━━'%ver_lbl))
-        for sk in['lh2609','jm2609']:
+        for sk in['lh2609']:
             if sk not in data:continue
             d=data[sk];cfg=d['cfg'];price=d['price'];atr=d['atr'];prob=d[prob_key]
             pos=s_ver['positions'].get(sk,[])
@@ -520,7 +520,7 @@ def morning():
     
     # 预拉行情
     m_prices={}
-    for sk in['lh2609','jm2609']:
+    for sk in['lh2609']:
         rt=get_realtime_quote(sk)
         if rt:m_prices[sk]=rt['price']
         else:
@@ -540,7 +540,7 @@ def morning():
     
     for ver_name,ver_st,is_v28,msuffix in ver_config:
         ele.append(md('━━━ **%s** ━━━'%ver_name))
-        for sk in['lh2609','jm2609']:
+        for sk in['lh2609']:
             cfg=S[sk];df=fd(cfg['code'])
             if df is None:continue
             price=float(df.iloc[-1]['close']);prev=float(df.iloc[-2]['close'])if len(df)>1 else price
@@ -582,8 +582,46 @@ def morning():
     ele.append(md('**账户** V25 ¥%s | V28 ¥%s | V29 ¥%s | V30 ¥%s'%(
         format(int(v25_eq),','),format(int(v28_eq),','),
         format(int(v29_eq),','),format(int(v30_eq),','))))
-    ok=send('早报 | '+wday,ele,'blue')
-    print('早报发送:','✅成功'if ok else'❌失败')
+    ok1=send('早报① | '+wday,ele,'blue')
+    print('早报①:','✅'if ok1 else'❌')
+    
+    # 卡2: V31/V32/V32b (超单卡限制,拆开)
+    if ver_config[4:]:
+        ele2=[md('**%s %s 盘前②**'%(today,wday)),hr()]
+        for ver_name,ver_st,is_v28,msuffix in ver_config[4:]:
+            ele2.append(md('━━━ **%s** ━━━'%ver_name))
+            for sk in['lh2609']:
+                cfg=S[sk];df=fd(cfg['code'])
+                if df is None:continue
+                price=float(df.iloc[-1]['close']);prev=float(df.iloc[-2]['close'])if len(df)>1 else price
+                chg=(price-prev)/prev
+                av=[abs(float(df.iloc[i]['high'])-float(df.iloc[i]['low']))for i in range(max(0,len(df)-20),len(df))]
+                atr=np.mean(av);ma5=np.mean([float(df.iloc[i]['close'])for i in range(max(0,len(df)-5),len(df))])
+                ma20=np.mean([float(df.iloc[i]['close'])for i in range(max(0,len(df)-20),len(df))])
+                ft=bf(df,len(df)-1,60)
+                if ft is None:continue
+                mp=MD+'/'+sk+msuffix
+                if not os.path.exists(mp):continue
+                m=pickle.load(open(mp,'rb'));prob=float(m.predict_proba(ft.reshape(1,-1))[0][1])
+                trend='📈'if price>ma5>ma20 else('📉'if price<ma5<ma20 else'↔️')
+                signal='看多'if prob>0.5 else'看空';conf=int((prob if prob>0.5 else 1-prob)*100)
+                ele2.append(md('**%s** %s %.0f(%+.1f%%) | MA5 %.0f MA20 %.0f | 模型%s %d%%'%(
+                    cfg['cn'],trend,price,chg*100,ma5,ma20,signal,conf)))
+                pos=ver_st['positions'].get(sk,[] if is_v28 else None)
+                if is_v28:
+                    if pos:
+                        has28,level28,sum28,lines28=analyze_v28(sk,cfg,df,pos,price,atr,prob)
+                        ele2.append(md(sum28.replace('**%s** '%cfg['cn'],'')))
+                        ele2.append(md('\\n'.join(lines28)))
+                    else:ele2.append(md('⚪ 空仓'))
+                else:
+                    if pos:
+                        has,level,summary,lines=analyze(sk,cfg,df,pos,price,atr,prob)
+                        ele2.append(md(summary.replace('**%s** '%cfg['cn'],'')))
+                        ele2.append(md('\\n'.join(lines)))
+                    else:ele2.append(md('⚪ 空仓'))
+        ok2=send('早报② | '+wday,ele2,'blue')
+        print('早报②:','✅'if ok2 else'❌')
 
 # ===== 晚报 =====
 def evening():
@@ -593,7 +631,7 @@ def evening():
     ele=[md('**%s 收盘**'%today),hr()]
     
     e_prices={}
-    for sk in['lh2609','jm2609']:
+    for sk in['lh2609']:
         rt=get_realtime_quote(sk)
         if rt:e_prices[sk]=rt['price']
         else:
@@ -609,7 +647,7 @@ def evening():
     
     for ver_name,ver_st,is_v28,msuffix in ver_config:
         ele.append(md('━━━ **%s** ━━━'%ver_name))
-        for sk in['lh2609','jm2609']:
+        for sk in['lh2609']:
             cfg=S[sk];df=fd(cfg['code'])
             if df is None:continue
             price=float(df.iloc[-1]['close']);prev=float(df.iloc[-2]['close'])if len(df)>1 else price
@@ -709,7 +747,7 @@ def _eval_models(week_start,week_end):
         ('V30','_xgb_calibrated.pkl'),
     ]
     results=[]
-    for sk in['lh2609','jm2609']:
+    for sk in['lh2609']:
         cfg=S[sk];df=fd(cfg['code'])
         if df is None or len(df)<80:continue
         # 筛选本周的日线bar
@@ -779,7 +817,7 @@ def weekly_report():
     
     # 预拉行情
     prices={}
-    for sk in['lh2609','jm2609']:
+    for sk in['lh2609']:
         rt=get_realtime_quote(sk)
         if rt:prices[sk]=rt['price']
         else:

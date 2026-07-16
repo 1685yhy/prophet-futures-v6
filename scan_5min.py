@@ -16,32 +16,24 @@ PRED_HISTORY_FILE = os.path.join(MODEL_DIR, 'pred_history.json')
 SYMBOLS = {
     # 基础品种参数（multiplier, rr 等不随版本变的）
     'lh2609': {'multiplier': 16, 'rr': 4},
-    'jm2609': {'multiplier': 60, 'rr': 3.5},
 }
 
 # 每个版本的参数（用于扫描阈值判断）
 VERSION_CONFIGS = {
     'V25': {
         'lh2609': {'max_pos': 6,  'stop_mult': 0.8, 'has_reduce': False},
-        'jm2609': {'max_pos': 4,  'stop_mult': 1.8, 'has_reduce': False},
     },
     'V28': {
         'lh2609': {'max_pos': 6,  'stop_mult': 1.5, 'has_reduce': True,
                    'reduce1_atr': 2.0, 'reduce2_atr': 4.0},
-        'jm2609': {'max_pos': 4,  'stop_mult': 2.0, 'has_reduce': True,
-                   'reduce1_atr': 3.0, 'reduce2_atr': 5.0},
     },
     'V29': {
         'lh2609': {'max_pos': 6,  'stop_mult': 1.5, 'has_reduce': True,
                    'reduce1_atr': 2.0, 'reduce2_atr': 4.0},
-        'jm2609': {'max_pos': 4,  'stop_mult': 2.0, 'has_reduce': True,
-                   'reduce1_atr': 3.0, 'reduce2_atr': 5.0},
     },
     'V30': {
         'lh2609': {'max_pos': 6,  'stop_mult': 1.5, 'has_reduce': True,
                    'reduce1_atr': 2.0, 'reduce2_atr': 4.0},
-        'jm2609': {'max_pos': 4,  'stop_mult': 2.0, 'has_reduce': True,
-                   'reduce1_atr': 3.0, 'reduce2_atr': 5.0},
     },
 }
 

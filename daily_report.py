@@ -20,11 +20,6 @@ SYMBOLS = {
                'trail_atr': 2.0,  'be_atr': 1.0,
                'reduce1_atr': 2.0, 'reduce1_pct': 0.5,
                'reduce2_atr': 4.0, 'reduce2_pct': 0.5},
-    'jm2609': {'code': 'JM0', 'name': 'JM 焦煤', 'cost': 0.0011, 'multiplier': 60,
-               'stop_type': 'atr', 'stop_mult': 2.0, 'rr': 3.5, 'max_pos': 4,
-               'trail_atr': 3.0,  'be_atr': 2.0,
-               'reduce1_atr': 3.0, 'reduce1_pct': 0.5,
-               'reduce2_atr': 5.0, 'reduce2_pct': 0.5},
 }
 CAPITAL = 300000
 MODEL_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'models')
@@ -433,9 +428,9 @@ def build_actions(positions_rows, market_data):
 
     lines = []
     for r in positions_rows:
-        atr = market_data.get(
-            [k for k, v in SYMBOLS.items() if v['name'] == r['name']][0], {}
-        ).get('atr', 100) if market_data else 100
+        symbol_keys = [k for k, v in SYMBOLS.items() if v['name'] == r['name']]
+        if not symbol_keys: continue
+        atr = market_data.get(symbol_keys[0], {}).get('atr', 100) if market_data else 100
 
         # 风险判断
         if r['dist_stop'] < 50:
