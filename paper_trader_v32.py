@@ -387,6 +387,8 @@ def main():
             
             sd = 'LONG' if prob > 0.5 else 'SHORT'
             conf = prob if prob > 0.5 else 1-prob
+            if conf < 0.55: continue  # V32 入场置信度门槛
+            conf = prob if prob > 0.5 else 1-prob
             
             ps = calc_position_size(state['cash'], price, atr, cfg)
             if ps == 0: continue

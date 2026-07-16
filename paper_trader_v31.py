@@ -23,7 +23,7 @@ SYMBOLS = {
         'code': 'LH0', 'name': 'LH', 'cost': 0.0006, 'multiplier': 16,
         'max_pos': 6,
         # V31 dynamic exit params (LH: tighter, faster)
-        'hard_atr': 0.8,       # 硬止损 ATR倍数
+        'hard_atr': 1.5,       # V31 硬止损 ATR倍数
         'trail_atr': 2.0,      # 移动止损启动: 盈利>2ATR
         'be_atr': 1.0,         # 保本启动: 盈利>1ATR
         'trail_dist': 1.5,     # 移动止损距离 ATR倍数
