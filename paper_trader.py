@@ -328,7 +328,7 @@ def main():
     print("=" * 60)
     print("  Prophet v26 — Dynamic Stop/Take-Profit Engine")
     print(f"  Capital: ¥{CAPITAL:,}  |  {datetime.now().strftime('%Y-%m-%d %H:%M')}")
-    print(f"  LH: 硬止损ATR×0.8 | 模型退出prob 0.35/0.65 | 移动止损2ATR")
+    print(f"  LH: 硬止损ATR×1.5 | 模型退出prob 0.35/0.65 | 移动止损2ATR")
     print(f"  JM: 硬止损ATR×1.8 | 模型退出prob 0.30/0.70 | 移动止损3ATR")
     print("=" * 60)
 
