@@ -536,7 +536,7 @@ def main():
             if not running: break
             time.sleep(1)
 
-    print('\nShutting down V32...')
+    print('\nShutting down V34...')
     save_state(state)
     print('Final equity: ¥%s' % format(int(state['cash']), ','))
     print('Total trades: %d' % len(state.get('trades', [])))
