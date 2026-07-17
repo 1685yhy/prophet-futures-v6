@@ -14,7 +14,7 @@ TARGETS=(
 
 for target in "${TARGETS[@]}"; do
   IFS=':' read -r file label pattern <<< "$target"
-  alive=$(pgrep -fc "$pattern" 2>/dev/null || echo 0)
+  alive=$(pgrep -fc "$pattern" 2>/dev/null)
   if [ "$alive" -eq 0 ]; then
     echo "[$(date +%H:%M:%S)] ⚠️ $label 挂了，重启..."
     nohup .venv/bin/python -u "$file" >> "/home/a/prophet_futures/logs/guard_${label}.log" 2>&1 &

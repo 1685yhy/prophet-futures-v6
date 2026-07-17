@@ -1,5 +1,5 @@
 {
-  "cash": 294486.59964000003,
+  "cash": 294330.82044000004,
   "positions": {
     "jm2609": {
       "dir": "SHORT",
@@ -10,20 +10,19 @@
       "take_profit": 1120.7,
       "cost_pct": 0.0011,
       "_rev_count": 0,
-      "bar_count": 44,
+      "bar_count": 45,
       "_trail_stop": 1409.4425
     },
     "lh2609": {
-      "dir": "LONG",
+      "dir": "SHORT",
       "vol": 6,
-      "entry": 12015.0,
-      "entry_time": "2026-07-14T09:00:32.202807",
-      "stop": 11858.6,
-      "take_profit": 12140.6,
+      "entry": 11855.0,
+      "entry_time": "2026-07-17T10:08:16.552906",
+      "stop": 12174.9,
+      "take_profit": 10875.5,
       "cost_pct": 0.0006,
       "_rev_count": 0,
-      "bar_count": 44,
-      "_trail_stop": 11767.25
+      "bar_count": 0
     }
   },
   "trades": [
@@ -50,6 +49,18 @@
       "pnl_amount": -20595.648,
       "entry_time": "2026-07-10T09:00:13.823924",
       "exit_time": "2026-07-13T17:37:02.656341"
+    },
+    {
+      "sym": "lh2609",
+      "dir": "LONG",
+      "entry": 12015.0,
+      "exit": 11858.6,
+      "exit_type": "STOP",
+      "vol": 6,
+      "pnl_pct": -0.014217062005826021,
+      "pnl_amount": -2459.779199999995,
+      "entry_time": "2026-07-14T09:00:32.202807",
+      "exit_time": "2026-07-17T10:08:16.552906"
     }
   ],
   "equity_history": [
