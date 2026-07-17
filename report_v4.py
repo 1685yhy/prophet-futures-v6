@@ -465,6 +465,7 @@ def scan():
     
     # ═══ V25 大块 ═══
     ele.append(md('━━━ **V25 原版** ━━━'))
+    ele.append(md('🧪基准对照组: 最简单固定止损能不能活'))
     for sk in['lh2609']:
         if sk not in data:continue
         d=data[sk];cfg=d['cfg'];price=d['price'];atr=d['atr'];prob=d['prob']
@@ -487,6 +488,7 @@ def scan():
     # ═══ V28 大块 ═══
     ele.append(md(''))
     ele.append(md('━━━ **V28 动态** ━━━'))
+    ele.append(md('🧪动态策略价值(vs V25): 加减仓/反手是否更好'))
     for sk in['lh2609']:
         if sk not in data:continue
         d=data[sk];cfg=d['cfg'];price=d['price'];atr=d['atr'];prob=d['prob']
@@ -525,9 +527,11 @@ def scan():
     # ── 第二张卡 V29+V30 ──
     ele2=[];act2=[];warn2=[]
     s29=lv29();s30=lv30()
+    _test2={'V29 新模型':'🧪新模型价值(vs V28同策略): 重训是否更准','V30 校准版':'🧪概率校准(vs V29): 回测负优化,验证中'}
     for ver_lbl,s_ver,prob_key in[('V29 新模型',s29,'prob_new'),('V30 校准版',s30,'prob_cal')]:
         ele2.append(md(''))
         ele2.append(md('━━━ **%s** ━━━'%ver_lbl))
+        ele2.append(md(_test2.get(ver_lbl,'')))
         for sk in['lh2609']:
             if sk not in data:continue
             d=data[sk];cfg=d['cfg'];price=d['price'];atr=d['atr'];prob=d[prob_key]
@@ -572,15 +576,16 @@ def scan():
                 try: prob32=float(m32.predict_proba(ft.reshape(1,-1))[0][1])
                 except: prob32=None
     
-    for ver_lbl,s_ver,model_info in [
-        ('V31 基线',s31,'_xgb.pkl 旧模型'),
-        ('V32 优化',s32,'v31_xgb.pkl 回测最优'),
-        ('V32b 保守',s32b,'v31_xgb.pkl 半仓不反手'),
-        ('V33 无反手',s33,'v31_xgb.pkl 反手OFF(0717)'),
-        ('V34 基本面',s34,'v34_fund_xgb.pkl 22维')]:
+    for ver_lbl,s_ver,model_info,test_desc in [
+        ('V31 基线',s31,'_xgb.pkl 旧模型','🧪测宽止损基线: 1.5ATR是否比0.5抗噪'),
+        ('V32 优化',s32,'v31_xgb.pkl 回测最优','🧪主力(回测+766%): 紧止损+宽止盈'),
+        ('V32b 保守',s32b,'v31_xgb.pkl 半仓不反手','🧪半仓风控: 少赚但更稳?'),
+        ('V33 无反手',s33,'v31_xgb.pkl 反手OFF(0717)','🧪反手价值(vs V32): 回测+837%能否复现'),
+        ('V34 基本面',s34,'v34_fund_xgb.pkl 22维','🧪基本面价值(vs V33): 现货/猪粮比有用吗')]:
         ele3.append(md(''))
         ele3.append(md('━━━ **%s** ━━━'%ver_lbl))
         ele3.append(md('模型: %s'%model_info))
+        ele3.append(md('%s'%test_desc))
         for sk in['lh2609']:
             if sk not in data:continue
             d=data[sk];cfg=d['cfg'];price=d['price'];atr=d['atr']

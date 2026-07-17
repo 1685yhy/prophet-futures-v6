@@ -40,15 +40,15 @@ STATE_FILES = {
 }
 
 VERSION_INFO = {
-    'V25': {'name': 'V25 原版',    'strategy': '固定止损+模型退出', 'model': '_xgb.pkl (旧模型)', 'desc': '基准版本'},
-    'V28': {'name': 'V28 动态',    'strategy': '动态加仓/减仓/反手', 'model': '_xgb.pkl (旧模型)', 'desc': '动态策略，与V25对比策略差异'},
-    'V29': {'name': 'V29 新模型',  'strategy': '动态加仓/减仓/反手', 'model': '_xgb_new.pkl (新模型)', 'desc': '新模型，与V28对比模型差异'},
-    'V30': {'name': 'V30 校准版',  'strategy': '动态加仓/减仓/反手', 'model': '_xgb_calibrated.pkl (校准)', 'desc': '校准模型，与V29对比校准效果'},
-    'V31': {'name': 'V31 基线',    'strategy': '固定止损+模型退出(重训)', 'model': '_xgb.pkl', 'desc': 'V25逻辑+新模型+1.5ATR'},
-    'V32': {'name': 'V32 优化',    'strategy': '动态优化(紧止损/宽止盈)', 'model': 'v31_xgb.pkl (回测最优)', 'desc': '0.5ATR止损+6RR追踪+新模型'},
-    'V32b':{'name': 'V32b 保守',   'strategy': '保守(半仓/不反手)', 'model': 'v31_xgb.pkl (新模型)', 'desc': '半仓+紧止损+极难反手'},
-    'V33':{'name': 'V33 无反手',  'strategy': 'V32同参但反手OFF', 'model': 'v31_xgb.pkl (新模型)', 'desc': '0717网格:关反手+71pp'},
-    'V34':{'name': 'V34 基本面',  'strategy': 'atr1.0/conf0.65/反手OFF', 'model': 'v34_fund_xgb.pkl (22维)', 'desc': '19技术+3基本面(期现价差/猪粮比Z/周指)'},
+    'V25': {'name': 'V25 原版',    'strategy': '固定止损+模型退出', 'model': '_xgb.pkl (旧模型)', 'desc': '🧪测: 基准对照组 | 看点: 最简单的固定止损能不能活'},
+    'V28': {'name': 'V28 动态',    'strategy': '动态加仓/减仓/反手', 'model': '_xgb.pkl (旧模型)', 'desc': '🧪测: 动态策略价值(vs V25) | 看点: 加仓/减仓/反手是否比固定好'},
+    'V29': {'name': 'V29 新模型',  'strategy': '动态加仓/减仓/反手', 'model': '_xgb_new.pkl (新模型)', 'desc': '🧪测: 新模型价值(vs V28同策略) | 看点: 重训模型是否更准'},
+    'V30': {'name': 'V30 校准版',  'strategy': '动态加仓/减仓/反手', 'model': '_xgb_calibrated.pkl (校准)', 'desc': '🧪测: 概率校准价值(vs V29) | 看点: 校准后信号质量(回测负优化,验证中)'},
+    'V31': {'name': 'V31 基线',    'strategy': '固定止损+模型退出(重训)', 'model': '_xgb.pkl', 'desc': '🧪测: 宽止损基线(vs V32紧止损) | 看点: 1.5ATR是否比0.5ATR抗噪'},
+    'V32': {'name': 'V32 优化',    'strategy': '动态优化(紧止损/宽止盈)', 'model': 'v31_xgb.pkl (回测最优)', 'desc': '🧪测: 主力策略(回测+766%) | 看点: 紧止损亏小钱+宽止盈赚大钱'},
+    'V32b':{'name': 'V32b 保守',   'strategy': '保守(半仓/不反手)', 'model': 'v31_xgb.pkl (新模型)', 'desc': '🧪测: 半仓风控(vs V32) | 看点: 少赚但更稳?适合实盘第一步'},
+    'V33':{'name': 'V33 无反手',  'strategy': 'V32同参但反手OFF', 'model': 'v31_xgb.pkl (新模型)', 'desc': '🧪测: 反手价值(vs V32唯一差异) | 看点: 回测+837%>766%,实盘能否复现'},
+    'V34':{'name': 'V34 基本面',  'strategy': 'atr1.0/conf0.65/反手OFF', 'model': 'v34_fund_xgb.pkl (22维)', 'desc': '🧪测: 基本面价值(vs V33) | 看点: 现货/猪粮比数据能否提升实盘(回测633%较弱,观察版)'},
 }
 
 # ============================================================
