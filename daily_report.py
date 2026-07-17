@@ -38,6 +38,7 @@ STATE_FILES = {
     'V33': 'paper_state_v33.json',
     'V34': 'paper_state_v34.json',
     'V35': 'paper_state_v35.json',
+    'V36': 'paper_state_v36.json',
 }
 
 VERSION_INFO = {
@@ -50,7 +51,8 @@ VERSION_INFO = {
     'V32b':{'name': 'V32b 保守',   'strategy': '保守(半仓/不反手)', 'model': 'v31_xgb.pkl (新模型)', 'desc': '🧪测: 半仓风控(vs V32) | 看点: 少赚但更稳?适合实盘第一步'},
     'V33':{'name': 'V33 无反手',  'strategy': 'V32同参但反手OFF', 'model': 'v31_xgb.pkl (新模型)', 'desc': '🧪测: 反手价值(vs V32唯一差异) | 看点: 回测+837%>766%,实盘能否复现'},
     'V34':{'name': 'V34 基本面',  'strategy': 'atr1.0/conf0.65/反手OFF', 'model': 'v34_fund_xgb.pkl (22维)', 'desc': '🧪测: 基本面价值(vs V33) | 看点: 现货/猪粮比数据能否提升实盘(回测633%较弱,观察版)'},
-    'V35':{'name': 'V35 LSTM',  'strategy': 'atr1.5/RR4/反手OFF', 'model': 'v35_lstm.pt (深度学习)', 'desc': '🧪测: 深度学习价值(vs V33) | 看点: LSTM序列模型回测+999%/-27%全场最优,实盘能否复现'},
+    'V35':{'name': 'V35 LSTM',  'strategy': 'atr1.5/RR4/反手OFF', 'model': 'v35_lstm.pt (深度学习)', 'desc': '🧪测: 深度学习价值(vs V33) | 看点: LSTM序列(注:纯LH回测-53%,JM混跑幻觉已修正)'},
+    'V36':{'name': 'V36 牛市改造',  'strategy': '类平衡+MA90过滤+atr2.0', 'model': 'v36_bal_xgb.pkl', 'desc': '🧪测: 纯LH唯一正收益配置(+154%/5.5年,年化18%) | 看点: 牛市能赚(多空平衡)实盘复现?'},
 }
 
 # ============================================================
@@ -80,6 +82,7 @@ VERSION_MODEL_SUFFIXES = {
     'V33':['v31_xgb.pkl'],                           # V33=V32模型,反手OFF
     'V34':['v34_fund_xgb.pkl'],                      # V34=22维基本面模型
     'V35':['v35_lstm.pt'],                           # V35=LSTM深度学习
+    'V36':['v36_bal_xgb.pkl'],                       # V36=类平衡+MA90过滤
 }
 
 def get_model_prediction(sym_key, ver=None):
@@ -93,6 +96,9 @@ def get_model_prediction(sym_key, ver=None):
     # V32/V32b use flat model names (v31_xgb.pkl), others use {sym_key}{suffix}
     if ver == 'V35':
         mp = os.path.join(MODEL_DIR, 'v35_lstm.pt')
+        if not os.path.exists(mp): mp = None
+    elif ver == 'V36':
+        mp = os.path.join(MODEL_DIR, 'v36_bal_xgb.pkl')
         if not os.path.exists(mp): mp = None
     elif ver == 'V34':
         mp = os.path.join(MODEL_DIR, 'v34_fund_xgb.pkl')

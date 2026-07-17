@@ -141,6 +141,10 @@ def lv32():
     if os.path.exists(p):return json.load(open(p))
     return{'positions':{},'cash':300000}
 
+def lv36():
+    p=SF.replace('.json','_v36.json')
+    return json.load(open(p)) if os.path.exists(p) else {'cash':300000,'positions':{}}
+
 def lv35():
     p=SF.replace('.json','_v35.json')
     return json.load(open(p)) if os.path.exists(p) else {'cash':300000,'positions':{}}
@@ -381,7 +385,7 @@ def analyze_v28(sk,cfg,df,pos28,price,atr,prob):
     if sys_trail is not None:
         lines.append('| 系统止损 | %.0f (距%.0f点) |'%(es,sp))
         # 实时算止盈价
-        rr_map = {'V28':4.0,'V29':4.0,'V30':3.5,'V32':6.0,'V32b':5.0,'V33':6.0,'V34':6.0,'V35':4.0}
+        rr_map = {'V28':4.0,'V29':4.0,'V30':3.5,'V32':6.0,'V32b':5.0,'V33':6.0,'V34':6.0,'V35':4.0,'V36':4.0}
         rr = 4.0
         for k,v in rr_map.items():
             if k.lower() in str(cfg.get('name','')).lower() or True: pass
@@ -567,7 +571,7 @@ def scan():
 
     # ── 第三张卡 V31+V32+V32b ──
     ele3=[];act3=[];warn3=[]
-    s31=lv31();s32=lv32();s32b=lv32b();s33=lv33();s34=lv34();s35=lv35()
+    s31=lv31();s32=lv32();s32b=lv32b();s33=lv33();s34=lv34();s35=lv35();s36=lv36()
     # V31/V32/V32b model probs
     mp_v32=MD+'/'+'v31_xgb.pkl'
     prob32=None
@@ -586,7 +590,8 @@ def scan():
         ('V32b 保守',s32b,'v31_xgb.pkl 半仓不反手','🧪半仓风控: 少赚但更稳?'),
         ('V33 无反手',s33,'v31_xgb.pkl 反手OFF(0717)','🧪反手价值(vs V32): 回测+837%能否复现'),
         ('V34 基本面',s34,'v34_fund_xgb.pkl 22维','🧪基本面价值(vs V33): 现货/猪粮比有用吗'),
-        ('V35 LSTM',s35,'v35_lstm.pt 深度学习','🧪深度学习价值: 回测+999%/-27%全场最优,实盘复现?')]:
+        ('V35 LSTM',s35,'v35_lstm.pt 深度学习','🧪深度学习(注:纯LH-53%,JM幻觉已修正)'),
+        ('V36 牛市改造',s36,'v36_bal_xgb.pkl 类平衡','🧪纯LH唯一正收益(+154%): 类平衡+MA90过滤')]:
         ele3.append(md(''))
         ele3.append(md('━━━ **%s** ━━━'%ver_lbl))
         ele3.append(md('模型: %s'%model_info))
@@ -627,16 +632,16 @@ def scan():
     if act3: banner3=['**⚠️ 需要操作**']+act3+['']; [ele3.insert(0,md(b)) for b in banner3]
     elif warn3: banner3=['**⚡ 关注**']+warn3+['']; [ele3.insert(0,md(b)) for b in banner3]
     
-    v31_eq=eq(s31,prices);v32_eq=eq(s32,prices);v32b_eq=eq(s32b,prices);v33_eq=eq(s33,prices);v34_eq=eq(s34,prices);v35_eq=eq(s35,prices)
+    v31_eq=eq(s31,prices);v32_eq=eq(s32,prices);v32b_eq=eq(s32b,prices);v33_eq=eq(s33,prices);v34_eq=eq(s34,prices);v35_eq=eq(s35,prices);v36_eq=eq(s36,prices)
     ele3.append(md(''))
-    ele3.append(md('V31 ¥%s | V32 ¥%s | V32b ¥%s | V33 ¥%s | V34 ¥%s | V35 ¥%s | %s'%(
-        format(int(v31_eq),','),format(int(v32_eq),','),format(int(v32b_eq),','),format(int(v33_eq),','),format(int(v34_eq),','),format(int(v35_eq),','),now.strftime('%H:%M'))))
+    ele3.append(md('V31 ¥%s | V32 ¥%s | V32b ¥%s | V33 ¥%s | V34 ¥%s | V35 ¥%s | V36 ¥%s | %s'%(
+        format(int(v31_eq),','),format(int(v32_eq),','),format(int(v32b_eq),','),format(int(v33_eq),','),format(int(v34_eq),','),format(int(v35_eq),','),format(int(v36_eq),','),now.strftime('%H:%M'))))
     send('扫描③ %s'%now.strftime('%H:%M'),ele3,'red'if act3 else('yellow'if warn3 else'blue'),bool(act3))
 
 # ===== 早报 =====
 def morning():
     sv=ls();s28=lv28();s29=lv29();s30=lv30()
-    s31=lv31();s32=lv32();s32b=lv32b();s33=lv33();s34=lv34();s35=lv35()
+    s31=lv31();s32=lv32();s32b=lv32b();s33=lv33();s34=lv34();s35=lv35();s36=lv36()
     now=datetime.now();today=now.strftime('%Y-%m-%d')
     wday=['周一','周二','周三','周四','周五','周六','周日'][now.weekday()]
     ele=[md('**%s %s 盘前** | 行情+模型预测'%(today,wday)),hr()]
@@ -662,6 +667,7 @@ def morning():
         ('V33 无反手',s33,True,'v31_xgb.pkl'),
         ('V34 基本面',s34,True,'v34_fund_xgb.pkl'),
         ('V35 LSTM',s35,True,'v35_lstm.pt'),
+        ('V36 牛市改造',s36,True,'v36_bal_xgb.pkl'),
     ]
     
     for ver_name,ver_st,is_v28,msuffix in ver_config:
@@ -752,7 +758,7 @@ def morning():
 # ===== 晚报 =====
 def evening():
     sv=ls();s28=lv28();s29=lv29();s30=lv30()
-    s31=lv31();s32=lv32();s32b=lv32b();s33=lv33();s34=lv34();s35=lv35()
+    s31=lv31();s32=lv32();s32b=lv32b();s33=lv33();s34=lv34();s35=lv35();s36=lv36()
     now=datetime.now();today=now.strftime('%Y-%m-%d')
     ele=[md('**%s 收盘**'%today),hr()]
     
@@ -775,6 +781,7 @@ def evening():
         ('V33 无反手',s33,True,'v31_xgb.pkl'),
         ('V34 基本面',s34,True,'v34_fund_xgb.pkl'),
         ('V35 LSTM',s35,True,'v35_lstm.pt'),
+        ('V36 牛市改造',s36,True,'v36_bal_xgb.pkl'),
     ]
     
     for ver_name,ver_st,is_v28,msuffix in ver_config:
@@ -930,7 +937,7 @@ def _eval_models(week_start,week_end):
 def weekly_report():
     """生成四版本周报：卡1总览 + 卡2明细"""
     sv=ls();s28=lv28();s29=lv29();s30=lv30()
-    s31=lv31();s32=lv32();s32b=lv32b();s33=lv33();s34=lv34();s35=lv35()
+    s31=lv31();s32=lv32();s32b=lv32b();s33=lv33();s34=lv34();s35=lv35();s36=lv36()
     now=datetime.now()
     today=now.date()
     days_since_monday=today.weekday()
@@ -951,6 +958,7 @@ def weekly_report():
         ('V33 无反手',s33),
         ('V34 基本面',s34),
         ('V35 LSTM',s35),
+        ('V36 牛市改造',s36),
     ]
     
     # 预拉行情
