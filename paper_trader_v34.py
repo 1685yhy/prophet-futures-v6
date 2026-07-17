@@ -141,7 +141,7 @@ def main():
     print('=' * 60)
     print('  Prophet V34 — 动态加仓/减仓/反手引擎')
     print('  Capital: ¥%s  |  %s' % (format(CAPITAL, ','), datetime.now().strftime('%Y-%m-%d %H:%M')))
-    print('  LH: ATR×0.5 加仓>70%&3ATR 反手OFF')
+    print('  LH: ATR×1.0 conf>0.65 加仓>70%&3ATR 反手OFF (22维基本面)')
     print('=' * 60)
 
     # Load models
