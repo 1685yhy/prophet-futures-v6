@@ -474,7 +474,7 @@ def scan():
         for t in t25_today[-5:]:
             cfg=S.get(t.get('sym',''),{})
             cn=tp_cn(t.get('type','?'));reason=tp_reason(t.get('type','?'),cfg)
-            ele.append(md('%s %s %d手 %+.0f → %s'%(t.get('time','')[-8:-3],cn,t.get('vol',0),t.get('pnl',0),reason)))
+            ele.append(md('%s %s %d手 %+.0f → %s'%(t.get('time','')[11:19],cn,t.get('vol',0),t.get('pnl',0),reason)))
     
     # ═══ V28 大块 ═══
     ele.append(md(''))
@@ -500,7 +500,7 @@ def scan():
         for t in t28_today[-5:]:
             cfg=S.get(t.get('sym',''),{})
             cn=tp_cn(t.get('type','?'));reason=tp_reason(t.get('type','?'),cfg)
-            ele.append(md('%s %s %d手 %+.0f → %s'%(t.get('time','')[-8:-3],cn,t.get('vol',0),t.get('pnl',0),reason)))
+            ele.append(md('%s %s %d手 %+.0f → %s'%(t.get('time','')[11:19],cn,t.get('vol',0),t.get('pnl',0),reason)))
 
     # ── 发送第一张卡 V25+V28 ──
     if act:
@@ -539,7 +539,7 @@ def scan():
             for t in ts_t[-5:]:
                 cfg=S.get(t.get('sym',''),{})
                 cn=tp_cn(t.get('type','?'));reason=tp_reason(t.get('type','?'),cfg)
-                ele2.append(md('%s %s %d手 %+.0f → %s'%(t.get('time','')[-8:-3],cn,t.get('vol',0),t.get('pnl',0),reason)))
+                ele2.append(md('%s %s %d手 %+.0f → %s'%(t.get('time','')[11:19],cn,t.get('vol',0),t.get('pnl',0),reason)))
     
     if act2: banner2=['**⚠️ 需要操作**']+act2+['']; [ele2.insert(0,md(b)) for b in banner2]
     elif warn2: banner2=['**⚡ 关注**']+warn2+['']; [ele2.insert(0,md(b)) for b in banner2]
@@ -602,7 +602,7 @@ def scan():
             for t in ts_t[-3:]:
                 cfg=S.get(t.get('sym',''),{})
                 cn=tp_cn(t.get('type','?'));reason=tp_reason(t.get('type','?'),cfg)
-                ele3.append(md('%s %s %d手 %+.0f → %s'%(t.get('time','')[-8:-3],cn,t.get('vol',0),t.get('pnl',0),reason)))
+                ele3.append(md('%s %s %d手 %+.0f → %s'%(t.get('time','')[11:19],cn,t.get('vol',0),t.get('pnl',0),reason)))
     
     if act3: banner3=['**⚠️ 需要操作**']+act3+['']; [ele3.insert(0,md(b)) for b in banner3]
     elif warn3: banner3=['**⚡ 关注**']+warn3+['']; [ele3.insert(0,md(b)) for b in banner3]

@@ -547,7 +547,7 @@ def generate_report(mode='morning'):
     positions_rows = collect_all_positions(market_data)
 
     # ── 文本输出（兼容）──
-    mode_cn = '早报' if mode == 'morning' else '晚报'
+    mode_cn = '早报' if mode == 'morning' else ('午报' if mode == 'midday' else '晚报')
     text_lines = [f"══ Prophet Futures {mode_cn} ══", f"{today_str} {wday}"]
     for r in (positions_rows or []):
         text_lines.append(
