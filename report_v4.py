@@ -141,6 +141,10 @@ def lv32():
     if os.path.exists(p):return json.load(open(p))
     return{'positions':{},'cash':300000}
 
+def lv34():
+    p=SF.replace('.json','_v34.json')
+    return json.load(open(p)) if os.path.exists(p) else {'cash':300000,'positions':{}}
+
 def lv33():
     p=SF.replace('.json','_v33.json')
     return json.load(open(p)) if os.path.exists(p) else {'cash':300000,'positions':{}}
@@ -373,7 +377,7 @@ def analyze_v28(sk,cfg,df,pos28,price,atr,prob):
     if sys_trail is not None:
         lines.append('| 系统止损 | %.0f (距%.0f点) |'%(es,sp))
         # 实时算止盈价
-        rr_map = {'V28':4.0,'V29':4.0,'V30':3.5,'V32':6.0,'V32b':5.0,'V33':6.0}
+        rr_map = {'V28':4.0,'V29':4.0,'V30':3.5,'V32':6.0,'V32b':5.0,'V33':6.0,'V34':6.0}
         rr = 4.0
         for k,v in rr_map.items():
             if k.lower() in str(cfg.get('name','')).lower() or True: pass
@@ -555,7 +559,7 @@ def scan():
 
     # ── 第三张卡 V31+V32+V32b ──
     ele3=[];act3=[];warn3=[]
-    s31=lv31();s32=lv32();s32b=lv32b();s33=lv33()
+    s31=lv31();s32=lv32();s32b=lv32b();s33=lv33();s34=lv34()
     # V31/V32/V32b model probs
     mp_v32=MD+'/'+'v31_xgb.pkl'
     prob32=None
@@ -572,7 +576,8 @@ def scan():
         ('V31 基线',s31,'_xgb.pkl 旧模型'),
         ('V32 优化',s32,'v31_xgb.pkl 回测最优'),
         ('V32b 保守',s32b,'v31_xgb.pkl 半仓不反手'),
-        ('V33 无反手',s33,'v31_xgb.pkl 反手OFF(0717)')]:
+        ('V33 无反手',s33,'v31_xgb.pkl 反手OFF(0717)'),
+        ('V34 基本面',s34,'v34_fund_xgb.pkl 22维')]:
         ele3.append(md(''))
         ele3.append(md('━━━ **%s** ━━━'%ver_lbl))
         ele3.append(md('模型: %s'%model_info))
@@ -612,16 +617,16 @@ def scan():
     if act3: banner3=['**⚠️ 需要操作**']+act3+['']; [ele3.insert(0,md(b)) for b in banner3]
     elif warn3: banner3=['**⚡ 关注**']+warn3+['']; [ele3.insert(0,md(b)) for b in banner3]
     
-    v31_eq=eq(s31,prices);v32_eq=eq(s32,prices);v32b_eq=eq(s32b,prices);v33_eq=eq(s33,prices)
+    v31_eq=eq(s31,prices);v32_eq=eq(s32,prices);v32b_eq=eq(s32b,prices);v33_eq=eq(s33,prices);v34_eq=eq(s34,prices)
     ele3.append(md(''))
-    ele3.append(md('V31 ¥%s | V32 ¥%s | V32b ¥%s | V33 ¥%s | %s'%(
-        format(int(v31_eq),','),format(int(v32_eq),','),format(int(v32b_eq),','),format(int(v33_eq),','),now.strftime('%H:%M'))))
+    ele3.append(md('V31 ¥%s | V32 ¥%s | V32b ¥%s | V33 ¥%s | V34 ¥%s | %s'%(
+        format(int(v31_eq),','),format(int(v32_eq),','),format(int(v32b_eq),','),format(int(v33_eq),','),format(int(v34_eq),','),now.strftime('%H:%M'))))
     send('扫描③ %s'%now.strftime('%H:%M'),ele3,'red'if act3 else('yellow'if warn3 else'blue'),bool(act3))
 
 # ===== 早报 =====
 def morning():
     sv=ls();s28=lv28();s29=lv29();s30=lv30()
-    s31=lv31();s32=lv32();s32b=lv32b();s33=lv33()
+    s31=lv31();s32=lv32();s32b=lv32b();s33=lv33();s34=lv34()
     now=datetime.now();today=now.strftime('%Y-%m-%d')
     wday=['周一','周二','周三','周四','周五','周六','周日'][now.weekday()]
     ele=[md('**%s %s 盘前** | 行情+模型预测'%(today,wday)),hr()]
@@ -645,6 +650,7 @@ def morning():
         ('V32 优化',s32,True,'v31_xgb.pkl'),
         ('V32b 保守',s32b,True,'v31_xgb.pkl'),
         ('V33 无反手',s33,True,'v31_xgb.pkl'),
+        ('V34 基本面',s34,True,'v34_fund_xgb.pkl'),
     ]
     
     for ver_name,ver_st,is_v28,msuffix in ver_config:
@@ -735,7 +741,7 @@ def morning():
 # ===== 晚报 =====
 def evening():
     sv=ls();s28=lv28();s29=lv29();s30=lv30()
-    s31=lv31();s32=lv32();s32b=lv32b();s33=lv33()
+    s31=lv31();s32=lv32();s32b=lv32b();s33=lv33();s34=lv34()
     now=datetime.now();today=now.strftime('%Y-%m-%d')
     ele=[md('**%s 收盘**'%today),hr()]
     
@@ -756,6 +762,7 @@ def evening():
         ('V32 优化',s32,True,'v31_xgb.pkl'),
         ('V32b 保守',s32b,True,'v31_xgb.pkl'),
         ('V33 无反手',s33,True,'v31_xgb.pkl'),
+        ('V34 基本面',s34,True,'v34_fund_xgb.pkl'),
     ]
     
     for ver_name,ver_st,is_v28,msuffix in ver_config:
@@ -911,7 +918,7 @@ def _eval_models(week_start,week_end):
 def weekly_report():
     """生成四版本周报：卡1总览 + 卡2明细"""
     sv=ls();s28=lv28();s29=lv29();s30=lv30()
-    s31=lv31();s32=lv32();s32b=lv32b();s33=lv33()
+    s31=lv31();s32=lv32();s32b=lv32b();s33=lv33();s34=lv34()
     now=datetime.now()
     today=now.date()
     days_since_monday=today.weekday()
@@ -930,6 +937,7 @@ def weekly_report():
         ('V32 优化',s32),
         ('V32b 保守',s32b),
         ('V33 无反手',s33),
+        ('V34 基本面',s34),
     ]
     
     # 预拉行情

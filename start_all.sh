@@ -12,6 +12,7 @@ pkill -f "paper_trader_v30.py" 2>/dev/null || true
 pkill -f "paper_trader_v32.py" 2>/dev/null || true
 pkill -f "paper_trader_v32b.py" 2>/dev/null || true
 pkill -f "paper_trader_v33.py" 2>/dev/null || true
+pkill -f "paper_trader_v34.py" 2>/dev/null || true
 sleep 2
 
 nohup python3 -u paper_trader_v31.py > /home/a/prophet_futures/logs/paper_v31.log 2>&1 &
@@ -30,4 +31,6 @@ nohup python3 -u paper_trader_v32b.py > /home/a/prophet_futures/logs/paper_v32b.
 echo "V32b PID $!"
 nohup python3 -u paper_trader_v33.py > /home/a/prophet_futures/logs/paper_v33.log 2>&1 &
 echo "V33  PID $!"
+nohup python3 -u paper_trader_v34.py > /home/a/prophet_futures/logs/paper_v34.log 2>&1 &
+echo "V34  PID $!"
 echo "done"

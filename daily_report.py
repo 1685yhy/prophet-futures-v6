@@ -36,6 +36,7 @@ STATE_FILES = {
     'V32': 'paper_state_v32.json',
     'V32b': 'paper_state_v32b.json',
     'V33': 'paper_state_v33.json',
+    'V34': 'paper_state_v34.json',
 }
 
 VERSION_INFO = {
@@ -47,6 +48,7 @@ VERSION_INFO = {
     'V32': {'name': 'V32 优化',    'strategy': '动态优化(紧止损/宽止盈)', 'model': 'v31_xgb.pkl (回测最优)', 'desc': '0.5ATR止损+6RR追踪+新模型'},
     'V32b':{'name': 'V32b 保守',   'strategy': '保守(半仓/不反手)', 'model': 'v31_xgb.pkl (新模型)', 'desc': '半仓+紧止损+极难反手'},
     'V33':{'name': 'V33 无反手',  'strategy': 'V32同参但反手OFF', 'model': 'v31_xgb.pkl (新模型)', 'desc': '0717网格:关反手+71pp'},
+    'V34':{'name': 'V34 基本面',  'strategy': 'atr1.0/conf0.65/反手OFF', 'model': 'v34_fund_xgb.pkl (22维)', 'desc': '19技术+3基本面(期现价差/猪粮比Z/周指)'},
 }
 
 # ============================================================
@@ -74,6 +76,7 @@ VERSION_MODEL_SUFFIXES = {
     'V32': ['v31_xgb.pkl'],                          # V5回测最优模型
     'V32b':['v31_xgb.pkl'],                          # V5回测最优模型（保守）
     'V33':['v31_xgb.pkl'],                           # V33=V32模型,反手OFF
+    'V34':['v34_fund_xgb.pkl'],                      # V34=22维基本面模型
 }
 
 def get_model_prediction(sym_key, ver=None):
@@ -85,7 +88,10 @@ def get_model_prediction(sym_key, ver=None):
 
     mp = None
     # V32/V32b use flat model names (v31_xgb.pkl), others use {sym_key}{suffix}
-    if ver in ('V32', 'V32b', 'V33'):
+    if ver == 'V34':
+        mp = os.path.join(MODEL_DIR, 'v34_fund_xgb.pkl')
+        if not os.path.exists(mp): mp = None
+    elif ver in ('V32', 'V32b', 'V33'):
         flat_name = os.path.join(MODEL_DIR, f'v31_{sym_key}_xgb.pkl' if ver == 'V32b' else 'v31_xgb.pkl')
         # Try sym-specific first, then generic
         for candidate in [
@@ -112,6 +118,10 @@ def get_model_prediction(sym_key, ver=None):
         feats = build_features(daily_df, len(daily_df)-1, 60)
         if feats is None:
             return None
+        if ver == 'V34':  # 22维: 拼3维基本面
+            import numpy as _np
+            from fund_features import get_fund_features
+            feats = _np.append(feats, _np.array(get_fund_features(float(daily_df.iloc[-1]['close'])), dtype=_np.float32))
         prob = float(model.predict_proba(feats.reshape(1, -1))[0][1])
         direction = 'LONG' if prob > 0.5 else 'SHORT'
         confidence = prob if prob > 0.5 else (1 - prob)
