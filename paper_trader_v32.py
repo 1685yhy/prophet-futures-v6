@@ -232,7 +232,14 @@ def main():
             if df is None: continue
             
             price = float(df.iloc[-1]['close'])
-            # 止损检查用实时价而非日线高低（日线可能含昨天数据）
+            # 止损检查用实时价(日线收盘可能是昨天价)
+            try:
+                from realtime_data import get_realtime_quote
+                rt = get_realtime_quote(sym_key)
+                if rt and rt.get('price', 0) > 0:
+                    price = rt['price']
+            except:
+                pass
             high = price
             low = price
             atr = calc_atr(df, len(df)-1, 20)

@@ -221,6 +221,11 @@ def check_v26_exit(sym_key, pos, models, df, now):
         return False, None, None
     
     price = float(df.iloc[-1]['close'])
+    try:
+        from realtime_data import get_realtime_quote
+        rt = get_realtime_quote(sym_key)
+        if rt and rt.get('price', 0) > 0: price = rt['price']
+    except: pass
     atr = calc_atr(df, len(df)-1, 20)
     if atr is None or price <= 0:
         return False, None, None
