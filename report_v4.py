@@ -184,22 +184,18 @@ def analyze(sk,cfg,df,pos,price,atr,prob):
     cd='LONG'if prob>0.5 else'SHORT';cf=prob if prob>0.5 else 1-prob
     pp=price-entry if d=='LONG'else entry-price
     pa=pp/atr if atr>0 else 0
-    pa_amt=pp*vol*cfg['mp']  # 浮盈 = 点数×乘数×手数
+    pa_amt=pp*vol*cfg['mp']
     pa_pct=pp/entry
     dc='做多'if d=='LONG'else'做空';signal='看多'if prob>0.5 else'看空'
     conf=int(cf*100);si='🟢'if prob>0.5 else'🔴'
     ps='+'if pa_amt>=0 else'';pc='🟢'if pa_amt>=0 else'🔴'
     
-    sd2=atr*cfg['atr_stop']
-    hs=price-sd2 if d=='LONG'else price+sd2;tr=entry
-    if d=='LONG':
-        if pa>cfg['be_atr']:tr=max(tr,entry)
-        if pa>cfg['trail_atr']:tr=max(tr,price-atr*(cfg['atr_stop']-0.3))
-        es=max(hs,tr);sp=price-es;spa=sp/atr
-    else:
-        if pa>cfg['be_atr']:tr=min(tr,entry)
-        if pa>cfg['trail_atr']:tr=min(tr,price+atr*(cfg['atr_stop']-0.3))
-        es=min(hs,tr);sp=es-price;spa=sp/atr
+    # 读纸盘真实止损(只紧不松)，不用自己算
+    paper_stop = pos.get('stop', 0)
+    paper_trail = pos.get('_trail_stop', 0)
+    es = max(paper_stop, paper_trail) if d=='LONG' else min(paper_stop, paper_trail) if paper_trail else paper_stop
+    sp = price - es if d=='LONG' else es - price
+    spa = sp / atr if atr > 0 else 0
     
     should_reverse=(d=='LONG'and prob<cfg['reverse_conf'])or(d=='SHORT'and prob>1-cfg['reverse_conf'])
     should_reduce=(d==cd and cf<cfg['reduce_conf'])
