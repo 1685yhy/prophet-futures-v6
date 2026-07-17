@@ -12,6 +12,7 @@ TARGETS=(
   "paper_trader_v32b.py:V32b:paper_trader_v32b.py"
   "paper_trader_v33.py:V33:paper_trader_v33.py"
   "paper_trader_v34.py:V34:paper_trader_v34.py"
+  "paper_trader_v35.py:V35:paper_trader_v35.py"
 )
 
 for target in "${TARGETS[@]}"; do
