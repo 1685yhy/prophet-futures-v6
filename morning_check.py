@@ -93,7 +93,8 @@ def check_stop_breach():
     for label, sf in [
         ('V25','paper_state.json'),('V28','paper_state_v28.json'),('V29','paper_state_v29.json'),
         ('V30','paper_state_v30.json'),('V31','paper_state_v31.json'),('V32','paper_state_v32.json'),
-        ('V32b','paper_state_v32b.json')]:
+        ('V32b','paper_state_v32b.json'),
+        ('V33','paper_state_v33.json')]:
         if not os.path.exists(sf): continue
         s = json.load(open(sf))
         pos = s['positions'].get('lh2609')
@@ -129,7 +130,8 @@ def check_trail_active():
     for label, sf, atr_stop in [
         ('V28','paper_state_v28.json',1.5),('V29','paper_state_v29.json',1.5),
         ('V30','paper_state_v30.json',2.0),('V32','paper_state_v32.json',0.5),
-        ('V32b','paper_state_v32b.json',0.5)]:
+        ('V32b','paper_state_v32b.json',0.5),
+        ('V33','paper_state_v33.json',0.5)]:
         if not os.path.exists(sf): continue
         s = json.load(open(sf))
         pos = s['positions'].get('lh2609')
@@ -157,7 +159,8 @@ if __name__ == '__main__':
     for label, pattern in [
         ('V25','paper_trader.py$'), ('V28','paper_trader_v28'), ('V29','paper_trader_v29'),
         ('V30','paper_trader_v30'), ('V31','paper_trader_v31'), ('V32','paper_trader_v32'),
-        ('V32b','paper_trader_v32b')
+        ('V32b','paper_trader_v32b'),
+        ('V33','paper_trader_v33')
     ]:
         check(f"纸盘{label}", lambda p=pattern: check_process(p))
     check("止损穿透", check_stop_breach)

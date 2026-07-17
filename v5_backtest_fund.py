@@ -564,7 +564,8 @@ class ContinuousBacktest:
         prob = pred['prob']; direction = pred['direction']; conf = pred['confidence']
         
         # Entry conditions
-        if not (conf > 0.55 and ((direction == 'LONG' and prob > 0.55) or (direction == 'SHORT' and prob < 0.45))):
+        _ec = spec.get('entry_conf', 0.55)
+        if not (conf > _ec and ((direction == 'LONG' and prob > _ec) or (direction == 'SHORT' and prob < 1 - _ec))):
             return
         
         # Position sizing
@@ -660,7 +661,8 @@ class ContinuousBacktest:
         
         if not inst_positions:
             # No existing position — fresh entry
-            if not (conf > 0.55 and ((direction == 'LONG' and prob > 0.55) or (direction == 'SHORT' and prob < 0.45))):
+            _ec = spec.get('entry_conf', 0.55)
+            if not (conf > _ec and ((direction == 'LONG' and prob > _ec) or (direction == 'SHORT' and prob < 1 - _ec))):
                 return
             if self._available_cash() < margin:
                 return

@@ -35,6 +35,7 @@ STATE_FILES = {
     'V31': 'paper_state_v31.json',
     'V32': 'paper_state_v32.json',
     'V32b': 'paper_state_v32b.json',
+    'V33': 'paper_state_v33.json',
 }
 
 VERSION_INFO = {
@@ -45,6 +46,7 @@ VERSION_INFO = {
     'V31': {'name': 'V31 基线',    'strategy': '固定止损+模型退出(重训)', 'model': '_xgb.pkl', 'desc': 'V25逻辑+新模型+1.5ATR'},
     'V32': {'name': 'V32 优化',    'strategy': '动态优化(紧止损/宽止盈)', 'model': 'v31_xgb.pkl (回测最优)', 'desc': '0.5ATR止损+6RR追踪+新模型'},
     'V32b':{'name': 'V32b 保守',   'strategy': '保守(半仓/不反手)', 'model': 'v31_xgb.pkl (新模型)', 'desc': '半仓+紧止损+极难反手'},
+    'V33':{'name': 'V33 无反手',  'strategy': 'V32同参但反手OFF', 'model': 'v31_xgb.pkl (新模型)', 'desc': '0717网格:关反手+71pp'},
 }
 
 # ============================================================
@@ -71,6 +73,7 @@ VERSION_MODEL_SUFFIXES = {
     'V31': ['_xgb.pkl'],
     'V32': ['v31_xgb.pkl'],                          # V5回测最优模型
     'V32b':['v31_xgb.pkl'],                          # V5回测最优模型（保守）
+    'V33':['v31_xgb.pkl'],                           # V33=V32模型,反手OFF
 }
 
 def get_model_prediction(sym_key, ver=None):
@@ -82,7 +85,7 @@ def get_model_prediction(sym_key, ver=None):
 
     mp = None
     # V32/V32b use flat model names (v31_xgb.pkl), others use {sym_key}{suffix}
-    if ver in ('V32', 'V32b'):
+    if ver in ('V32', 'V32b', 'V33'):
         flat_name = os.path.join(MODEL_DIR, f'v31_{sym_key}_xgb.pkl' if ver == 'V32b' else 'v31_xgb.pkl')
         # Try sym-specific first, then generic
         for candidate in [

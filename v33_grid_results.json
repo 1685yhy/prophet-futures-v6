@@ -1,0 +1,74 @@
+[
+  {
+    "atr_stop": 0.5,
+    "reverse": 0.0,
+    "return": 674.13,
+    "mdd": -50.36,
+    "trades": 787,
+    "score": 334.6
+  },
+  {
+    "atr_stop": 1.0,
+    "reverse": 0.0,
+    "return": 674.13,
+    "mdd": -50.36,
+    "trades": 787,
+    "score": 334.6
+  },
+  {
+    "atr_stop": 1.5,
+    "reverse": 0.0,
+    "return": 674.13,
+    "mdd": -50.36,
+    "trades": 787,
+    "score": 334.6
+  },
+  {
+    "atr_stop": 0.5,
+    "reverse": 0.35,
+    "return": 534.01,
+    "mdd": -60.76,
+    "trades": 847,
+    "score": 209.5
+  },
+  {
+    "atr_stop": 1.0,
+    "reverse": 0.35,
+    "return": 534.01,
+    "mdd": -60.76,
+    "trades": 847,
+    "score": 209.5
+  },
+  {
+    "atr_stop": 1.5,
+    "reverse": 0.35,
+    "return": 534.01,
+    "mdd": -60.76,
+    "trades": 847,
+    "score": 209.5
+  },
+  {
+    "atr_stop": 0.5,
+    "reverse": 0.25,
+    "return": 441.17,
+    "mdd": -65.93,
+    "trades": 830,
+    "score": 150.3
+  },
+  {
+    "atr_stop": 1.0,
+    "reverse": 0.25,
+    "return": 441.17,
+    "mdd": -65.93,
+    "trades": 830,
+    "score": 150.3
+  },
+  {
+    "atr_stop": 1.5,
+    "reverse": 0.25,
+    "return": 441.17,
+    "mdd": -65.93,
+    "trades": 830,
+    "score": 150.3
+  }
+]

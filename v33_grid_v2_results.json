@@ -1,0 +1,74 @@
+[
+  {
+    "atr_stop": 1.0,
+    "entry_conf": 0.65,
+    "return": 632.86,
+    "mdd": -39.48,
+    "trades": 831,
+    "score": 383.0
+  },
+  {
+    "atr_stop": 1.0,
+    "entry_conf": 0.6,
+    "return": 623.86,
+    "mdd": -40.35,
+    "trades": 855,
+    "score": 372.1
+  },
+  {
+    "atr_stop": 1.5,
+    "entry_conf": 0.55,
+    "return": 674.13,
+    "mdd": -50.36,
+    "trades": 787,
+    "score": 334.6
+  },
+  {
+    "atr_stop": 1.5,
+    "entry_conf": 0.6,
+    "return": 676.85,
+    "mdd": -50.99,
+    "trades": 779,
+    "score": 331.7
+  },
+  {
+    "atr_stop": 0.5,
+    "entry_conf": 0.6,
+    "return": 382.19,
+    "mdd": -39.85,
+    "trades": 1016,
+    "score": 229.9
+  },
+  {
+    "atr_stop": 0.5,
+    "entry_conf": 0.65,
+    "return": 388.38,
+    "mdd": -42.12,
+    "trades": 951,
+    "score": 224.8
+  },
+  {
+    "atr_stop": 0.5,
+    "entry_conf": 0.55,
+    "return": 374.12,
+    "mdd": -40.84,
+    "trades": 1066,
+    "score": 221.3
+  },
+  {
+    "atr_stop": 1.5,
+    "entry_conf": 0.65,
+    "return": 563.2,
+    "mdd": -62.0,
+    "trades": 770,
+    "score": 214.0
+  },
+  {
+    "atr_stop": 1.0,
+    "entry_conf": 0.55,
+    "return": 427.5,
+    "mdd": -57.2,
+    "trades": 877,
+    "score": 183.0
+  }
+]
