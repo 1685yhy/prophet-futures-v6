@@ -399,6 +399,12 @@ def main():
             if df is None: continue
             
             price = float(df.iloc[-1]['close'])
+            # 开仓用实时价
+            try:
+                from realtime_data import get_realtime_quote
+                rt = get_realtime_quote(sym_key)
+                if rt and rt.get('price', 0) > 0: price = rt['price']
+            except: pass
             atr = calc_atr(df, len(df)-1, 20)
             if atr is None: continue
             

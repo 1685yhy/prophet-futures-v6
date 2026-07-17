@@ -517,6 +517,12 @@ def main():
             signal_dir = 'LONG' if prob > 0.5 else 'SHORT'
             confidence = prob if prob > 0.5 else (1 - prob)
             price = float(df.iloc[-1]['close'])
+            # 开仓用实时价
+            try:
+                from realtime_data import get_realtime_quote
+                rt = get_realtime_quote(sym_key)
+                if rt and rt.get('price', 0) > 0: price = rt['price']
+            except: pass
             pos_size = calc_position_size(sym_key, df)
             if pos_size == 0: continue
 
